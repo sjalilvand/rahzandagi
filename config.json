@@ -2,7 +2,7 @@
   "_راهنما": {
     "اجرا": "ساده‌ترین راه: دوبار کلیک روی run_gui.bat (رابط گرافیکی). خط فرمان: python crawler.py",
     "site": "ورود: آدرس شروع، یوزر/موبایل، رمز؛ otp_wait_seconds = چند ثانیه منتظر کد پیامکی بمانیم",
-    "crawl": "خزش: max_pages سقف کل، max_pages_per_list سقف صفحه‌بندی هر فهرست، only_patterns = «فقط این صفحات» (عبارت داخل آدرس)، pause_urls = صفحاتی که قبل از برداشت منتظر اعمال فیلتر توسط کاربر می‌مانیم (** = همه)",
+    "crawl": "خزش: max_pages سقف کل، max_pages_per_list سقف صفحه‌بندی هر فهرست، only_patterns = «فقط این صفحات» (عبارت داخل آدرس)، pause_urls = صفحاتی که قبل از برداشت منتظر اعمال فیلتر توسط کاربر می‌مانیم (** = همه)، skip_filter_pages = رد شدن خودکار از صفحات فیلتر (کد ملی/پرونده/رهگیری) با کلیدواژه‌های filter_keywords",
     "pagination": "صفحه‌بندی: mode=auto همه انواع را خودکار تشخیص می‌دهد (دکمه بعدی، شماره صفحه، ?page=N، اسکرول بی‌نهایت)",
     "safety": "امنیت: لینک‌های عملیاتی (حذف/خروج/...) و مسیرهای ajax باز نمی‌شوند",
     "extraction": "ذخیره‌سازی: HTML، اسکرین‌شات، متن، جدول ساختاریافته، save_assets = ذخیره CSS/JS/تصاویر/قالب هر صفحه در assets_dir",
@@ -34,6 +34,8 @@
     "action_query_keys": null,
     "only_patterns": [],
     "pause_urls": [],
+    "skip_filter_pages": true,
+    "filter_keywords": [],
     "resume": true
   },
   "pagination": {

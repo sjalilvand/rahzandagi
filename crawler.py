@@ -89,13 +89,23 @@ class UIHooks:
     filter_pause(url, page) → قبل از برداشت صفحه منتظر «ادامه» یا «رد شدن» کاربر می‌ماند؛
                               پاسخ می‌تواند از رابط گرافیکی یا از دکمه‌های درون مرورگر بیاید
     progress(done, total, url) → پیشرفت خزش را به رابط گرافیکی می‌دهد
+    skip_now() → اگر کاربر دکمه «رد کردن صفحه فعلی» را زده باشد True (یک‌بارمصرف)
     stopped → اگر True شود، خزش پس از صفحه فعلی متوقف می‌شود
     نکته: اعضا attribute کلاس‌اند نه نمونه — تا زیرکلاس‌ها بتوانند متد تعریف کنند"""
 
     ask_otp = None
     filter_pause = None
     progress = None
+    skip_now = None
     stopped = False
+
+
+def _user_skip():
+    """آیا کاربر دکمه «رد کردن صفحه فعلی» را زده است؟ (یک‌بارمصرف)"""
+    try:
+        return bool(HOOKS.skip_now and HOOKS.skip_now())
+    except Exception:
+        return False
 
 HOOKS = UIHooks()
 
@@ -167,7 +177,13 @@ JS_DETECT_LOGIN = r"""
       if (!/ورود|ثبت|ادامه|دریافت|مرحله|login|sign[- _]?in|continue|send|next|بعدی/.test(btxt)) continue;
       f.setAttribute('data-cw-user', '1');
       submit.setAttribute('data-cw-submit', '1');
-      return {hasPassword: false, mobileOnly: true, userMarked: true, submitMarked: true};
+      // متن همه دکمه‌های مرئی صفحه — برای تشخیص «صفحه فیلتر» از «صفحه ورود» (نسخه ۳.۳)
+      const allBtns = [...document.querySelectorAll('button, input[type=submit], [role=button]')]
+        .filter(vis).slice(0, 12)
+        .map(b => ((b.innerText || b.value || '') + '').replace(/[\s\u200c]+/g, ' ').trim().toLowerCase())
+        .filter(t => t.length > 0 && t.length < 60);
+      return {hasPassword: false, mobileOnly: true, userMarked: true, submitMarked: true,
+              meta: meta, btns: allBtns};
     }
     return {hasPassword: false};
   }
@@ -650,10 +666,11 @@ class State:
         # «توقف برای فیلتر»: صفحاتی که قبل از برداشت، کاربر باید فیلترها را در مرورگر اعمال کند
         self.pause_urls = [str(x).strip() for x in (crawl.get("pause_urls") or []) if str(x).strip()]
         # «رد شدن از صفحات فیلتر» (کد ملی/پرونده/رهگیری): فقط لینک‌هایشان دنبال می‌شود، داده ذخیره نمی‌شود
-        self.skip_filter_pages = bool(crawl.get("skip_filter_pages", False))
+        self.skip_filter_pages = bool(crawl.get("skip_filter_pages", True))   # پیش‌فرض: روشن
         kw = crawl.get("filter_keywords")
         self.filter_keywords = [str(x) for x in kw] if kw else list(DEFAULT_FILTER_KEYWORDS)
         self.n_filter_skip = 0
+        self.n_user_skip = 0
         self.exclude = [p for p in crawl.get("exclude_patterns", []) if p] + list(BUILTIN_EXCLUDE)
         if not crawl.get("exclude_ajax", True):
             self.exclude = [p for p in self.exclude if p != "ajax"]
@@ -820,13 +837,41 @@ def looks_error(page):
     except Exception:
         return False
 
-def is_login_page(page):
-    """فرم ورود: یا رمز + نام‌کاربری، یا فرم موبایل‌محور (ورود دومعلی، مرحله اول)"""
+def is_login_page(page, st=None):
+    """فرم ورود: یا رمز + نام‌کاربری، یا فرم موبایل‌محور (ورود دومعلی، مرحله اول)
+    نسخه ۳.۳ — صفحات فیلتر/جست‌وجو (کد ملی، کد پرونده، رهگیری و ...) که فقط یک فیلد و
+    دکمه «تایید/استعلام/جستجو» دارند، دیگر صفحه ورود تشخیص داده نمی‌شوند؛
+    این اشتباه باعث می‌شد برنامه مدام کد ملی امتحان کند و جلو نرود."""
     try:
         d = page.evaluate(JS_DETECT_LOGIN)
         if not d or not d.get("userMarked"):
             return False
-        return bool(d.get("hasPassword") or d.get("mobileOnly"))
+        if d.get("hasPassword"):
+            return True
+        if not d.get("mobileOnly"):
+            return False
+        # --- محافظ صفحه فیلتر (فقط برای حالت تک‌فیلدی بدون رمز) ---
+        if st is not None:
+            # اگر آدرس فعلی همان صفحه ورود معرفی‌شده است، حتماً ورود است
+            try:
+                lu = st.cfg.get("site", {}).get("login_url") or ""
+                if lu:
+                    lu_n = norm(lu)
+                    if lu_n and norm(page.url).startswith(lu_n):
+                        return True
+            except Exception:
+                pass
+            meta = (d.get("meta") or "").lower()
+            kws = [k.lower() for k in (st.filter_keywords or DEFAULT_FILTER_KEYWORDS)]
+            if any(k in meta for k in kws):
+                # اگر هیچ دکمه‌ای به‌سبک «ورود/ادامه/دریافت کد» نیست، این صفحه فیلتر است نه ورود
+                # (دکمه‌های «ثبت/تایید/استعلام/جستجو» مال صفحات جست‌وجو هستند)
+                btns = d.get("btns") or []
+                loginish = any(re.search(r"ورود|sign[- _]?in|log[- _]?in|ثبت[- _]?نام|ادامه|دریافت|next|continue", b)
+                               for b in btns)
+                if not loginish:
+                    return False   # صفحه فیلتر است، نه ورود
+        return True
     except Exception:
         return False
 
@@ -964,30 +1009,38 @@ JS_CLICK_OTP_SUBMIT = r"""
 """
 
 # ---------------------------------------------------------------- صفحات فیلتر/جست‌وجو (کد ملی، پرونده، رهگیری)
-# تشخیص: فیلد مرئی با کلیدواژه فیلتر + دکمه ثبت/جست‌وجو + بدون جدول داده‌ای معنادار
+# تشخیص: فیلد مرئی با کلیدواژه فیلتر + دکمه ثبت/جست‌وجو + بدون جدول داده‌ای واقعی
+# نسخه ۳.۳: جدول‌های اطلاعاتی کوچک (مثل پنل کاربر در نوار کنار) دیگر مانع تشخیص نیستند؛
+# فقط جدول داده‌ای واقعی (۳ ردیف × ۳ ستون یا بیشتر، یا ۸ ردیف به بالا) مانع رد شدن است
 JS_FILTER_PAGE = r"""
 (kws) => {
   const vis = el => el && el.getClientRects().length > 0 && !el.disabled && !el.readOnly;
-  // جدول داده‌ای معنادار: جدول مرئی با حداقل ۲ ردیف پُر
-  let dataTables = 0;
+  // جدول داده‌ای واقعی؟ — معیار: چند ردیفِ چندستونه (گرید داده)، نه جدول چیدمان/اطلاعات کاربر
+  let bigGrid = false, maxRows = 0;
   document.querySelectorAll('table').forEach(tb => {
     if (tb.parentElement && tb.parentElement.closest('table')) return;
     const s = getComputedStyle(tb);
     if (s.display === 'none' || s.visibility === 'hidden') return;
-    let rows = 0;
+    let rows = 0, cols = 0;
     Array.from(tb.rows).forEach(tr => {
       if (!tr.getClientRects().length) return;
       const cells = Array.from(tr.cells).filter(c => (c.innerText || '').trim() !== '');
-      if (cells.length >= 2) rows++;
+      if (cells.length >= 2) {
+        rows++;
+        if (cells.length > cols) cols = cells.length;
+      }
     });
-    if (rows >= 2) dataTables++;
+    if (rows > maxRows) maxRows = rows;
+    if ((rows >= 3 && cols >= 3) || rows >= 8) bigGrid = true;
   });
-  if (dataTables > 0) return {found: false};   // جدول داده دارد؛ صفحه فیلتر خالی نیست
+  if (bigGrid) return {found: false, sparse: false, maxRows: maxRows};
   const badT = ['hidden','checkbox','radio','file','submit','button','image','reset'];
+  let nInputs = 0, textLen = 0;
   for (const el of document.querySelectorAll('input, textarea, select')) {
     if (!vis(el)) continue;
     const t = (el.type || 'text').toLowerCase();
     if (badT.includes(t)) continue;
+    nInputs++;
     let label = '';
     try {
       if (el.labels && el.labels.length) label = el.labels[0].innerText || '';
@@ -1003,9 +1056,11 @@ JS_FILTER_PAGE = r"""
     const okBtn = btns.some(b => /ثبت|جستجو|جست‌وجو|تایید|تأیید|بررسی|نمایش|استعلام|مشاهده|ادامه|search|submit|find|ok/i
                        .test((b.innerText || b.value || '') + ''));
     if (!okBtn) continue;
-    return {found: true, kind: hit};
+    return {found: true, kind: hit, sparse: false, maxRows: maxRows};
   }
-  return {found: false};
+  // سیگنال «صفحه کم‌محتوا» — برای بررسی دوباره بعد از رندر کامل SPA (React/Angular)
+  try { textLen = (document.body ? document.body.innerText : '').trim().length; } catch (e) {}
+  return {found: false, sparse: (nInputs <= 2 && textLen < 700), maxRows: maxRows};
 }
 """
 
@@ -1127,18 +1182,22 @@ def do_auto_login(page, ctx, st):
     if not user:
         err("نام کاربری/موبایل در تنظیمات خالی است؛ آن را وارد کنید یا از ورود دستی استفاده کنید.")
         return False
-    if not is_login_page(page):
+    if not is_login_page(page, st):
         lu = site.get("login_url")
         if lu:
             info(f"رفتن به صفحه ورود: {lu}")
             goto(page, lu, st.timeout)
-    if not is_login_page(page):
+    if not is_login_page(page, st):
         warn("فرم لاگین در صفحه پیدا نشد؛ login_url را در تنظیمات بررسی کنید.")
         return False
 
     otp_wait = int(site.get("otp_wait_seconds", 15))
     max_att = int(site.get("login_max_attempts", 5))
     for attempt in range(1, max_att + 1):
+        # فرمان «رد کردن صفحه فعلی» — اگر کاربر خواست، ورود را رها می‌کنیم (نسخه ۳.۳)
+        if _user_skip():
+            warn("با فرمان شما، ورود و این صفحه رد شد.")
+            return False
         # اگر از تلاش قبلی هنوز صفحه کد باز است، مرحله اول دوباره پر نمی‌شود
         try:
             otp_now = page.evaluate(JS_OTP_FIELD)
@@ -1191,6 +1250,9 @@ def do_auto_login(page, ctx, st):
                     except Exception:
                         done = True
                         break
+                    if _user_skip():
+                        warn("با فرمان شما، انتظار و ورود رد شد.")
+                        return False
                     time.sleep(1.0)
                 if done:
                     ok("ورود با موفقیت کامل شد.")
@@ -1212,7 +1274,7 @@ def do_auto_login(page, ctx, st):
                     continue
         info("لاگین کامل نشد؛ تلاش مجدد...")
         try:
-            if not is_login_page(page):
+            if not is_login_page(page, st):
                 lu = site.get("login_url") or (st.start_urls[0] if st.start_urls else None)
                 if lu:
                     goto(page, lu, st.timeout)
@@ -1227,7 +1289,7 @@ def do_manual_login(page, ctx, st):
         err("حالت لاگین دستی به پنجره مرورگر نیاز دارد. با فلگ --manual اجرا کنید.")
         return False
     target = site.get("login_url") or (st.start_urls[0] if st.start_urls else None)
-    if target and not is_login_page(page):
+    if target and not is_login_page(page, st):
         goto(page, target, st.timeout)
     info("در پنجره‌ی مرورگرِ باز شده، دستی وارد حساب شوید (کپچا/پیامک را کامل کنید).")
     info("برنامه به‌محض تشخیص ورود موفق، به‌صورت خودکار ادامه می‌دهد (سقف ۱۰ دقیقه)...")
@@ -1236,11 +1298,14 @@ def do_manual_login(page, ctx, st):
         try:
             if page.is_closed():
                 return False
-            if not is_login_page(page):
+            if not is_login_page(page, st):
                 ok("ورود دستی تشخیص داده شد. سشن ذخیره می‌شود...")
                 _save_session(ctx, st)
                 return True
         except Exception:
+            return False
+        if _user_skip():
+            warn("با فرمان شما، انتظار برای ورود دستی رد شد.")
             return False
         time.sleep(2)
     err("زمان انتظار برای ورود دستی تمام شد.")
@@ -1526,6 +1591,26 @@ def store_page(page, url, page_state, http_status, pag_info, st, variant=0):
     return [L[1] for L in link_rows] if variant == 0 else []
 
 # ---------------------------------------------------------------- صفحه‌بندی و پردازش یک URL
+def _filter_check_all_frames(page, st):
+    """بررسی «صفحه فیلتر» در فریم اصلی و همه زیرفریم‌ها (اگر فرم داخل iframe باشد).
+    خروجی: اولین نتیجه found، وگرنه نتیجه‌ای که سیگنال sparse دارد، وگرنه تهی"""
+    found_res, sparse_res = None, None
+    try:
+        frames = list(page.frames)
+    except Exception:
+        frames = []
+    for fr in frames:
+        try:
+            r = fr.evaluate(JS_FILTER_PAGE, st.filter_keywords)
+        except Exception:
+            continue
+        if r and r.get("found"):
+            return r
+        if r and not found_res and r.get("sparse"):
+            sparse_res = r
+    return found_res or sparse_res
+
+
 def process_page(page, ctx, url, st):
     """یک URL را باز، لاگین را چک، صفحه‌بندی را تشخیص و همه وضعیت‌ها را ذخیره می‌کند.
     خروجی: مجموعه URLهایی که در همین پردازش دیدمانده شد"""
@@ -1539,14 +1624,21 @@ def process_page(page, ctx, url, st):
         db_log(st.db, "BLOCKED", url)
         st.n_blocked += 1
         return urls_seen
-    if is_login_page(page):
+    # --- فرمان «رد کردن صفحه فعلی» از رابط گرافیکی (نسخه ۳.۳) ---
+    # هر جا کاربر گیر کرده باشد، با این دکمه صفحه رها می‌شود و خزش ادامه پیدا می‌کند
+    if _user_skip():
+        st.n_user_skip += 1
+        info(f"⏭ با فرمان شما این صفحه رد شد: {url}")
+        db_log(st.db, "SKIPPED", url)
+        return urls_seen
+    if is_login_page(page, st):
         info("نشست منقضی شده؛ در حال ورود مجدد...")
         if not do_login_flow(page, ctx, st):
             return urls_seen
         resp = goto(page, url, st.timeout)
         if not is_valid_http(page.url):
             return urls_seen
-        if is_login_page(page):
+        if is_login_page(page, st):
             warn("پس از ورود، باز هم صفحه لاگین نمایش داده شد؛ این صفحه ذخیره نشد.")
             return urls_seen
         if is_block_page(page):
@@ -1558,12 +1650,13 @@ def process_page(page, ctx, url, st):
 
     # --- رد شدن خودکار از صفحات فیلتر/جست‌وجو (کد ملی، کد پرونده، کد رهگیری و ...) ---
     # این صفحات داده‌ی برداشتنی ندارند؛ فقط لینک‌هایشان دنبال می‌شود تا خزش قطع نشود
+    # نسخه ۳.۳: بررسی در همه فریم‌ها (اگر فرم داخل iframe باشد) + بررسی دوباره برای SPA
     if st.skip_filter_pages:
-        fp = None
-        try:
-            fp = page.evaluate(JS_FILTER_PAGE, st.filter_keywords)
-        except Exception:
-            fp = None
+        fp = _filter_check_all_frames(page, st)
+        if fp and not fp.get("found") and fp.get("sparse"):
+            # صفحه کم‌محتواست — ممکن است React/Angular هنوز رندر نکرده باشد؛ یک‌بار دیگر چک می‌کنیم
+            time.sleep(1.2)
+            fp = _filter_check_all_frames(page, st)
         if fp and fp.get("found"):
             st.n_filter_skip += 1
             info(f"⏭ صفحه فیلتر «{fp.get('kind')}» رد شد — فقط لینک‌ها برداشت می‌شود: {url}")
@@ -1633,7 +1726,7 @@ def process_page(page, ctx, url, st):
                     page.evaluate(JS_SCROLL_BOTTOM)
                     time.sleep(st.scroll_wait)
                     n += 1
-                    if is_login_page(page):
+                    if is_login_page(page, st):
                         if not do_login_flow(page, ctx, st):
                             break
                     if is_block_page(page):
@@ -1691,7 +1784,7 @@ def process_page(page, ctx, url, st):
             except Exception:
                 pass
             time.sleep(st.delay)
-            if is_login_page(page):
+            if is_login_page(page, st):
                 if not do_login_flow(page, ctx, st):
                     break
             if is_block_page(page):
@@ -1755,7 +1848,7 @@ def process_page(page, ctx, url, st):
                 if is_block_page(page):
                     warn(f"دسترسی توسط فایروال مسدود شد؛ رد شد: {nurl}")
                     continue
-                if is_login_page(page):
+                if is_login_page(page, st):
                     if not do_login_flow(page, ctx, st):
                         continue
                     r = goto(page, nurl, st.timeout)
@@ -1786,7 +1879,7 @@ def process_page(page, ctx, url, st):
                     if is_block_page(page):
                         warn("دسترسی توسط فایروال مسدود شد؛ پایان صفحه‌بندی.")
                         break
-                    if is_login_page(page):
+                    if is_login_page(page, st):
                         if not do_login_flow(page, ctx, st):
                             break
                         r = goto(page, nurl, st.timeout)
@@ -2088,6 +2181,8 @@ def print_summary(st):
         print(f"   ردیف‌های تکراری حذف‌شده: {st.n_ds_dup}")
     if st.n_filter_skip:
         print(f"   صفحات فیلتر رد‌شده (کد ملی/پرونده/رهگیری): {st.n_filter_skip}")
+    if st.n_user_skip:
+        print(f"   صفحاتی که با فرمان شما رد شد: {st.n_user_skip}")
     if st.n_action_skip:
         print(f"   لینک‌های عملیاتی/ناآمن رد‌شده: {st.n_action_skip}")
     ds = db.execute("SELECT sqlite_table, source_url FROM datasets ORDER BY id").fetchall()
@@ -2312,7 +2407,7 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
                 print(BLOCK_SOLUTIONS)
                 summary.update({"ok": False, "error": "blocked", "hint": BLOCK_SOLUTIONS})
                 return summary
-            if is_login_page(page):
+            if is_login_page(page, st):
                 if use_session:
                     warn("سشن ذخیره‌شده منقضی شده است؛ ورود خودکار...")
                 else:

@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-سایت‌کاو ۳.۲ — رابط گرافیکی
+سایت‌کاو ۳.۳ — رابط گرافیکی
 ====================================================
-تغییرهای نسخه ۳.۲ نسبت به ۳.۱:
-  • رد شدن خودکار از صفحات فیلتر (کد ملی / کد پرونده / کد رهگیری و ...):
-    از این صفحات فقط لینک‌ها برداشت می‌شود و دیگر وقت صرف پر کردن/صفحه‌بندی نمی‌شود
-  • هنگام «توقف برای اعمال فیلتر»، دکمه‌های «ادامه» و «رد کردن این صفحه»
-    در خود مرورگر (نوار شناور پایین صفحه) هم ظاهر می‌شوند — می‌توانید از
-    داخل مرورگر صفحه را رد کنید بدون برگشتن به برنامه
+تغییرهای نسخه ۳.۳ نسبت به ۳.۲:
+  • رفع گیر کردن روی صفحات «کد ملی / کد پرونده / رهگیری»: این صفحات دیگر
+    صفحه ورود تشخیص داده نمی‌شوند؛ برنامه دیگر مدام کد ملی امتحان نمی‌کند
+  • دکمه‌ی «⏭ رد کردن صفحه فعلی»: هر لحظه که صفحه‌ای به دلایل مختلف گیر کرد،
+    با این دکمه صفحه رها می‌شود و خزش به صفحه بعدی می‌رود
+  • تشخیص قوی‌تر صفحات فیلتر: بررسی داخل iframeها، بی‌اثر شدن جدول‌های
+    اطلاعاتی کوچک (مثل پنل کاربر)، و بررسی دوباره برای سایت‌های React/Angular
+  • «رد شدن خودکار از صفحات فیلتر» پیش‌فرض روشن است (حتی با تنظیمات قدیمی)
+
+تغییرهای نسخه ۳.۲:
+  • رد شدن خودکار از صفحات فیلتر + دکمه‌های «ادامه/رد کردن» درون مرورگر
 
 تغییرهای نسخه ۳.۱:
   • کپی/برش/چسباندن در همه‌ی فیلدها: راست‌کلیک + Ctrl+V/C/X/A
@@ -316,6 +321,15 @@ class GuiHooks:
     def progress(self, done, total, url):
         self.app.msg_q.put(("progress", done, total, url))
 
+    def skip_now(self):
+        """فرمان «رد کردن صفحه فعلی» — اگر کاربر دکمه را زده باشد True و مصرف می‌شود"""
+        try:
+            v = bool(self.app._skip_flag)
+            self.app._skip_flag = False
+            return v
+        except Exception:
+            return False
+
 
 # ---------------------------------------------------------------- پنجره کد تأیید دومعلی
 class OTPDialog(tk.Toplevel):
@@ -418,12 +432,13 @@ class OTPDialog(tk.Toplevel):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("سایت‌کاو — نسخه ۳.۲ (رابط گرافیکی)")
+        self.title("سایت‌کاو — نسخه ۳.۳ (رابط گرافیکی)")
         self.geometry("880x760")
         self.minsize(760, 640)
         self.msg_q = queue.Queue()
         self.worker = None
         self.crawling = False
+        self._skip_flag = False   # فرمان «رد کردن صفحه فعلی» (نسخه ۳.۳)
 
         style = ttk.Style(self)
         try:
@@ -565,6 +580,9 @@ class App(tk.Tk):
         self.btn_stop = ttk.Button(bar, text="■  توقف", style="Stop.TButton", command=self._stop,
                                    state="disabled")
         self.btn_stop.pack(side="right", padx=4)
+        self.btn_skip = ttk.Button(bar, text="⏭  رد کردن صفحه فعلی", command=self._skip_now,
+                                   state="disabled")
+        self.btn_skip.pack(side="right", padx=4)
         ttk.Button(bar, text="باز کردن پوشه خروجی", command=self._open_out).pack(side="left", padx=4)
 
         self.pb = ttk.Progressbar(self, mode="determinate")
@@ -613,6 +631,14 @@ class App(tk.Tk):
 
     def _toggle_pause(self):
         self.e_pause_pat.configure(state="normal" if self.v_pause.get() else "disabled")
+
+    def _skip_now(self):
+        """دکمه «رد کردن صفحه فعلی» — هر لحظه از خزش قابل استفاده است (نسخه ۳.۳)"""
+        if not self.crawling:
+            return
+        self._skip_flag = True
+        self.lbl_status.configure(text="دستور «رد کردن صفحه» ثبت شد — صفحه فعلی رها می‌شود و خزش ادامه پیدا می‌کند...")
+        self._log("⏭ درخواست رد شدن از صفحه فعلی ثبت شد.")
 
     def _pick_dir(self):
         d = filedialog.askdirectory(initialdir=self.e_out.get() or PROG_DIR,
@@ -844,8 +870,10 @@ class App(tk.Tk):
             opts["headed"] = True   # توقف فیلتر نیاز به مرورگر مرئی دارد
 
         self.crawling = True
+        self._skip_flag = False
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
+        self.btn_skip.configure(state="normal")
         self.lbl_status.configure(text="در حال اجرا...")
         crawler.HOOKS = GuiHooks(self)
         self.worker = threading.Thread(target=self._worker, args=(cfg, out_dir, opts), daemon=True)
@@ -873,8 +901,13 @@ class App(tk.Tk):
 
     def _finish(self, res):
         self.crawling = False
+        self._skip_flag = False
         self.btn_start.configure(state="normal")
         self.btn_stop.configure(state="disabled")
+        try:
+            self.btn_skip.configure(state="disabled")
+        except Exception:
+            pass
         if self._filter_resp is not None:
             self._filter_ans("skip")
         if res.get("ok"):

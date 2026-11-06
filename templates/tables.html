@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge, paginate %}
+{% block title %}جدول‌ها — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>جدول‌های HTML استخراج‌شده</h1>
+    <p class="muted">{{ '{:,}'.format(total) }} جدول</p>
+  </div>
+</div>
+
+<form class="searchbar" method="get" action="{{ url_for('tables') }}">
+  {{ icon('search', 'ic sm') }}
+  <input name="q" value="{{ q }}" placeholder="جست‌وجو در عنوان یا سرستون‌ها…" autocomplete="off">
+  <button class="btn solid sm" type="submit">جست‌وجو</button>
+  {% if q %}<a class="btn ghost sm" href="{{ url_for('tables') }}">پاک کردن</a>{% endif %}
+</form>
+
+<div class="tbl-wrap">
+<table class="tbl">
+  <thead><tr><th>#</th><th>عنوان جدول</th><th>صفحه</th><th>ابعاد</th><th>مجموعه داده</th><th>زمان</th><th></th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+  <tr>
+    <td class="muted">{{ t.id }}</td>
+    <td class="strong">{{ t.caption or 'جدول بدون عنوان' }}</td>
+    <td class="muted">{{ (t.page_title or '')|truncate(30) }}</td>
+    <td class="nowrap">{{ t.real_rows }} × {{ t.n_cols }}</td>
+    <td>{% if t.dataset_table %}<span class="badge ok">{{ t.dataset_table }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="muted nowrap">{{ (t.created_at or '')|pdate if t.created_at else '—' }}</td>
+    <td class="nowrap">
+      <a class="btn ghost sm" href="{{ url_for('table_detail', tid=t.id) }}">{{ icon('eye','ic sm') }} نمایش</a>
+      <a class="btn ghost sm" href="{{ url_for('export_table', tid=t.id, fmt='xlsx') }}">{{ icon('download','ic sm') }} اکسل</a>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="empty">جدولی پیدا نشد.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ paginate(page, pages_n, total, url_for('tables', q=q)) }}
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}مجموعه‌داده‌ها — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>مجموعه‌داده‌ها</h1>
+    <p class="muted">{{ rows|length }} مجموعه · مجموعاً {{ '{:,}'.format(total_rows) }} ردیف داده برداشت شده</p>
+  </div>
+  <a class="btn solid" href="{{ url_for('export_center') }}">{{ icon('download') }} خروجی اکسل همه</a>
+</div>
+
+<div class="card nopad">
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>نام جدول</th><th>ردیف‌ها</th><th>ستون‌ها</th><th>منبع (URL)</th><th>زمان ساخت</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="strong mono">{{ r.name }}</td>
+      <td><span class="pill {{ 'hot' if r.n >= 500 else '' }}">{{ '{:,}'.format(r.n) }}</span></td>
+      <td>{{ r.cols }}</td>
+      <td class="mono ltr muted">{{ (r.d.source_url or '')|truncate(55) }}</td>
+      <td class="muted nowrap">{{ (r.d.created_at or '—')|pdate }}</td>
+      <td class="nowrap">
+        <a class="btn ghost sm" href="{{ url_for('dataset_detail', name=r.name) }}">{{ icon('eye','ic sm') }} نمایش داده</a>
+        <a class="btn ghost sm" href="{{ url_for('export_dataset', name=r.name, fmt='xlsx') }}">{{ icon('download','ic sm') }} اکسل</a>
+        <a class="btn ghost sm" href="{{ url_for('export_dataset', name=r.name, fmt='csv') }}">CSV</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="empty">مجموعه‌داده‌ای ثبت نشده است.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

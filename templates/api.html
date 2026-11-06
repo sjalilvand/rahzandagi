@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge %}
+{% block title %}پاسخ‌های API — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>پاسخ‌های API ثبت‌شده</h1>
+    <p class="muted">{{ rows|length }} پاسخ JSON که در حین خزش ثبت شده</p>
+  </div>
+</div>
+
+{% for r in rows %}
+<details class="api-item">
+  <summary>
+    {{ badge(r.method, 'met') }}
+    {{ badge(r.status, 'ok' if r.status == 200 else 'err') }}
+    <span class="mono ltr api-url">{{ (r.url or '')|truncate(90) }}</span>
+    <span class="muted nowrap">{{ (r.ts or '')|pdate }}</span>
+  </summary>
+  <div class="api-body">
+    <button class="btn ghost sm" data-copy="{{ r.body }}">{{ icon('copy','ic sm') }} کپی پاسخ</button>
+    <pre class="mono ltr">{{ r.body }}</pre>
+  </div>
+</details>
+{% else %}
+<div class="card empty-card">{{ icon('zap') }}<h2>پاسخی ثبت نشده</h2></div>
+{% endfor %}
+{% endblock %}

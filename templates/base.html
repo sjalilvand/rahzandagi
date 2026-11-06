@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2310b981'/%3E%3Cstop offset='1' stop-color='%2306b6d4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='6' fill='url(%23g)'/%3E%3Cpath d='M7 8h10M7 12h10M7 16h6' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+{% from 'macros.html' import icon %}
+
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-logo">{{ icon('layers') }}</div>
+    <div class="brand-txt">
+      <b>سایت‌کاو</b>
+      <small>نمایشگر داده‌ها <span class="ver">v{{ VERSION }}</span></small>
+    </div>
+  </div>
+
+  <nav class="nav">
+    {% set ep = request.endpoint %}
+    <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">{{ icon('grid') }}<span>داشبورد</span></a>
+    <a href="{{ url_for('pages') }}" class="{{ 'on' if ep == 'pages' or ep == 'page_detail' }}">{{ icon('pages') }}<span>صفحه‌ها</span></a>
+    <a href="{{ url_for('tables') }}" class="{{ 'on' if ep == 'tables' or ep == 'table_detail' }}">{{ icon('table') }}<span>جدول‌ها</span></a>
+    <a href="{{ url_for('datasets') }}" class="{{ 'on' if ep == 'datasets' or ep == 'dataset_detail' }}">{{ icon('db') }}<span>مجموعه‌داده‌ها</span></a>
+    <a href="{{ url_for('gallery') }}" class="{{ 'on' if ep == 'gallery' }}">{{ icon('image') }}<span>تصاویر</span></a>
+    <a href="{{ url_for('files') }}" class="{{ 'on' if ep == 'files' or ep == 'file_view' }}">{{ icon('code') }}<span>فایل‌های HTML</span></a>
+    <div class="nav-sep"></div>
+    <a href="{{ url_for('export_center') }}" class="{{ 'on' if ep == 'export_center' }}">{{ icon('download') }}<span>خروجی اکسل</span></a>
+    <a href="{{ url_for('logs') }}" class="{{ 'on' if ep == 'logs' }}">{{ icon('activity') }}<span>لاگ خزش</span></a>
+    <a href="{{ url_for('api_responses') }}" class="{{ 'on' if ep == 'api_responses' }}">{{ icon('zap') }}<span>پاسخ‌های API</span></a>
+    <a href="{{ url_for('settings') }}" class="{{ 'on' if ep == 'settings' }}">{{ icon('settings') }}<span>تنظیمات</span></a>
+  </nav>
+
+  {% if DB_PATH %}
+  <div class="side-foot">
+    <div class="dbchip" title="{{ DB_PATH }}">
+      {{ icon('db', 'ic sm') }}
+      <div><b>site_data.db</b><small>{{ DB_SIZE }}</small></div>
+    </div>
+  </div>
+  {% endif %}
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    {% if DB_PATH %}
+    <form class="gsearch" action="{{ url_for('search') }}" method="get" role="search">
+      {{ icon('search', 'ic sm') }}
+      <input type="search" name="q" placeholder="جست‌وجو در عنوان‌ها، متن‌ها، لینک‌ها و جدول‌ها…" value="{{ request.args.get('q','') }}" autocomplete="off">
+    </form>
+    {% endif %}
+    <div class="top-actions">
+      {% if OUT_DIR %}<span class="chip" title="{{ OUT_DIR }}">{{ icon('folder', 'ic sm') }} {{ OUT_DIR|default('—') }}</span>{% endif %}
+      <button class="iconbtn" id="themeBtn" title="تغییر پوسته روشن/تاریک">{{ icon('sun', 'ic sm') }}</button>
+    </div>
+  </header>
+
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    <div class="flashes">
+      {% for cat, m in msgs %}
+      <div class="flash {{ cat }}">{{ icon('check' if cat == 'ok' else 'alert', 'ic sm') }} <span>{{ m }}</span><button class="fx" onclick="this.parentElement.remove()">{{ icon('x', 'ic sm') }}</button></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endwith %}
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="foot">سایت‌کاو نسخه {{ VERSION }} — نمایشگر داده‌های خزیده‌شده · اجرا روی پورت {{ request.host.split(':')[1] if ':' in request.host else '5002' }}</footer>
+</div>
+
+<div class="lightbox" id="lightbox"><button class="lb-x" onclick="lbClose()">{{ icon('x') }}</button><img id="lbImg" alt=""></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

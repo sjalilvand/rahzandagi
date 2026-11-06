@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, paginate %}
+{% block title %}تصاویر — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>گالری تصاویر</h1>
+    <p class="muted">{{ '{:,}'.format(total) }} تصویر از پوشه‌ی خروجی (اسکرین‌شات‌ها و فایل‌های سایت)</p>
+  </div>
+  {% if folders|length > 1 %}
+  <div class="filter-chips">
+    <a class="chipbtn {{ 'on' if not folder }}" href="{{ url_for('gallery') }}">همه</a>
+    {% for f in folders %}<a class="chipbtn {{ 'on' if f == folder }}" href="{{ url_for('gallery', dir=f) }}">{{ f }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% if items %}
+<div class="gallery">
+  {% for it in items %}
+  <figure class="gitem">
+    <a href="{{ url_for('output_file', rel=it.rel) }}" target="_blank" onclick="lbFrom(event, this.href)">
+      <img src="{{ url_for('output_file', rel=it.rel) }}" alt="{{ it.name }}" loading="lazy">
+    </a>
+    <figcaption>
+      <span class="gname" title="{{ it.name }}">{{ it.name|truncate(26) }}</span>
+      <span class="gmeta">{{ it.size|hsize }}</span>
+    </figcaption>
+  </figure>
+  {% endfor %}
+</div>
+{{ paginate(page, pages_n, total, url_for('gallery', folder=folder)) }}
+{% else %}
+<div class="card empty-card">
+  {{ icon('image') }}
+  <h2>تصویری پیدا نشد</h2>
+  <p class="muted">اگر پوشه‌ی «خروجی» شامل <span class="code">screenshots/</span> یا <span class="code">assets/</span> است،
+  مسیر آن را در <a href="{{ url_for('settings') }}">تنظیمات</a> بررسی کنید.</p>
+</div>
+{% endif %}
+{% endblock %}

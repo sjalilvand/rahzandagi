@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, paginate %}
+{% block title %}{{ t.caption or 'جدول' }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<a class="backlink" href="{{ url_for('tables') }}">{{ icon('right','ic sm') }} بازگشت به جدول‌ها</a>
+
+<div class="page-head">
+  <div>
+    <h1>{{ t.caption or 'جدول بدون عنوان' }}</h1>
+    <p class="muted">
+      از صفحه‌ی <a href="{{ url_for('page_detail', pid=t.pid) }}">{{ (t.page_title or t.page_url or '')|truncate(40) }}</a>
+      · {{ total }} ردیف × {{ headers|length }} ستون
+      {% if t.dataset_table %} · مجموعه‌داده: <a href="{{ url_for('dataset_detail', name=t.dataset_table) }}">{{ t.dataset_table }}</a>{% endif %}
+    </p>
+  </div>
+  <div class="btnrow">
+    <a class="btn solid" href="{{ url_for('export_table', tid=t.id, fmt='xlsx') }}">{{ icon('download') }} خروجی اکسل</a>
+    <a class="btn ghost" href="{{ url_for('export_table', tid=t.id, fmt='csv') }}">{{ icon('download') }} CSV</a>
+  </div>
+</div>
+
+<div class="card nopad">
+  <div class="tbl-wrap">
+  <table class="tbl data">
+    <thead><tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>{% for c in r %}<td>{{ c if c is not none else '' }}</td>{% endfor %}</tr>
+      {% else %}
+      <tr><td colspan="{{ headers|length }}" class="empty">ردیفی ثبت نشده است.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{ paginate(page, pages_n, total, url_for('table_detail', tid=t.id)) }}
+{% endblock %}

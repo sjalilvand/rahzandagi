@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block content %}
+<div class="hero-card">
+  <div class="hero-ico">{{ icon('db') }}</div>
+  <h1>خوش آمدید! 👋</h1>
+  <p>فایل دیتابیس <b>site_data.db</b> هنوز پیدا نشده است. مسیر آن را در فرم زیر وارد کنید —
+     یا فایل را کنار همین برنامه (<span class="code">viewer.py</span>) کپی کنید و برنامه را دوباره اجرا کنید.</p>
+</div>
+
+<div class="card form-card">
+  <h2>{{ icon('settings') }} تنظیم مسیرها</h2>
+  <form method="post" action="{{ url_for('settings') }}" class="vform">
+    <label>مسیر کامل فایل دیتابیس <small>(مثال: <span class="code">D:\Projects\site-crawler-v3\خروجی\site_data.db</span>)</small>
+      <input name="db_path" dir="ltr" placeholder="C:\...\site_data.db" required>
+    </label>
+    <label>پوشه‌ی خروجی (اختیاری — شامل <span class="code">html/</span> و <span class="code">screenshots/</span>)
+      <input name="out_dir" dir="ltr" placeholder="C:\...\خروجی">
+    </label>
+    <button class="btn solid" type="submit">{{ icon('check') }} ذخیره و نمایش داده‌ها</button>
+  </form>
+  <p class="hint">نکته: معمولاً دیتابیس و پوشه‌ی خروجی، هر دو داخل پوشه‌ی «خروجی» کنار برنامه هستند.</p>
+</div>
+{% endblock %}

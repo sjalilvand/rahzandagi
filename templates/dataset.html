@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, paginate %}
+{% block title %}{{ name }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<a class="backlink" href="{{ url_for('datasets') }}">{{ icon('right','ic sm') }} بازگشت به مجموعه‌داده‌ها</a>
+
+<div class="page-head">
+  <div>
+    <h1 class="mono">{{ name }}</h1>
+    <p class="muted">{{ '{:,}'.format(total) }} ردیف × {{ cols|length }} ستون
+      {% if d and d.source_url %} · منبع: <a href="{{ d.source_url }}" target="_blank" rel="noopener" class="mono ltr">{{ d.source_url|truncate(50) }}</a>{% endif %}
+      {% if d and d.created_at %} · {{ d.created_at|pdate }}{% endif %}
+    </p>
+  </div>
+  <div class="btnrow">
+    <a class="btn solid" href="{{ url_for('export_dataset', name=name, fmt='xlsx') }}">{{ icon('download') }} خروجی اکسل</a>
+    <a class="btn ghost" href="{{ url_for('export_dataset', name=name, fmt='csv') }}">{{ icon('download') }} CSV</a>
+  </div>
+</div>
+
+<form class="searchbar" method="get" action="{{ url_for('dataset_detail', name=name) }}">
+  <input type="hidden" name="page" value="1">
+  {{ icon('search', 'ic sm') }}
+  <input name="q" value="{{ q }}" placeholder="جست‌وجو در همه‌ی ستون‌های این مجموعه…" autocomplete="off">
+  <button class="btn solid sm" type="submit">جست‌وجو</button>
+  {% if q %}<a class="btn ghost sm" href="{{ url_for('dataset_detail', name=name) }}">پاک کردن</a>{% endif %}
+</form>
+
+<div class="card nopad">
+  <div class="tbl-wrap">
+  <table class="tbl data" id="grid">
+    <thead><tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>{% for c in cols %}<td>{{ r[c] if r[c] is not none else '' }}</td>{% endfor %}</tr>
+      {% else %}
+      <tr><td colspan="{{ cols|length }}" class="empty">ردیفی پیدا نشد{% if q %} برای «{{ q }}»{% endif %}.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{ paginate(page, pages_n, total, url_for('dataset_detail', name=name, q=q)) }}
+{% endblock %}

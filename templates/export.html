@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}خروجی اکسل — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>خروجی اکسل</h1>
+    <p class="muted">ساخت دوباره‌ی فایل کامل <span class="code">export.xlsx</span> از دیتابیس — حتی اگر خزش نیمه‌کاره مانده یا اکسل قبلی خالی باشد</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="export-hero">
+    <div class="exp-ico">{{ icon('download') }}</div>
+    <div class="exp-txt">
+      <h2>فایل export.xlsx</h2>
+      {% if info %}
+        <p>فایل موجود: {{ info.size|hsize }} — آخرین بروزرسانی: {{ info.mtime|pdate }}</p>
+      {% else %}
+        <p class="warn-t">{{ icon('alert','ic sm') }} فایل هنوز ساخته نشده یا حذف شده است.</p>
+      {% endif %}
+    </div>
+    <form method="post" action="{{ url_for('export_build') }}">
+      <button class="btn solid lg" type="submit">{{ icon('refresh') }} ساخت مجدد خروجی کامل</button>
+    </form>
+  </div>
+  <p class="hint">خروجی کامل شامل این شیت‌هاست: <b>خلاصه</b>، <b>صفحه‌ها</b>، <b>مجموعه‌داده‌ها</b>،
+     <b>جدول‌های HTML</b>، <b>لینک‌ها</b>، <b>متن‌ها</b> و به‌ازای هر مجموعه‌داده یک شیت جداگانه.
+     فایل در پوشه‌ی خروجی ذخیره می‌شود و می‌توانید همین‌جا هر شیت را جداگانه هم بگیرید:</p>
+</div>
+
+<div class="card nopad">
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>مجموعه‌داده</th><th>ردیف‌ها</th><th>منبع</th><th>دانلود</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="strong mono">{{ r.name }}</td>
+      <td><span class="pill {{ 'hot' if r.n >= 500 else '' }}">{{ '{:,}'.format(r.n) }}</span></td>
+      <td class="mono ltr muted">{{ (r.src or '')|truncate(50) }}</td>
+      <td class="nowrap">
+        <a class="btn ghost sm" href="{{ url_for('export_dataset', name=r.name, fmt='xlsx') }}">{{ icon('download','ic sm') }} اکسل</a>
+        <a class="btn ghost sm" href="{{ url_for('export_dataset', name=r.name, fmt='csv') }}">CSV</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="empty">مجموعه‌داده‌ای ثبت نشده است.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, paginate %}
+{% block title %}فایل‌های HTML — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>فایل‌های HTML ذخیره‌شده</h1>
+    <p class="muted">{{ '{:,}'.format(total) }} فایل — همان صفحه‌هایی که خزنده ذخیره کرده؛ داخل برنامه قابل مشاهده‌اند</p>
+  </div>
+</div>
+
+<div class="card nopad">
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>نام فایل</th><th>پوشه</th><th>حجم</th><th>زمان</th><th></th></tr></thead>
+    <tbody>
+    {% for f in items %}
+    <tr>
+      <td class="strong mono">{{ f.name }}</td>
+      <td><span class="badge">{{ f.folder }}</span></td>
+      <td>{{ f.size|hsize }}</td>
+      <td class="muted nowrap">{{ f.mtime|default('', true)|pdate if f.mtime else '—' }}</td>
+      <td class="nowrap">
+        <a class="btn ghost sm" href="{{ url_for('file_view', path=f.rel) }}">{{ icon('eye','ic sm') }} نمایش داخل برنامه</a>
+        <a class="btn ghost sm" href="{{ url_for('output_file', rel=f.rel) }}" target="_blank">{{ icon('external','ic sm') }} پنجره‌ی جدا</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="empty">فایلی پیدا نشد — پوشه‌ی خروجی را در <a href="{{ url_for('settings') }}">تنظیمات</a> بررسی کنید.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{{ paginate(page, pages_n, total, url_for('files')) }}
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge, paginate %}
+{% block title %}صفحه‌ها — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>صفحه‌های خزیده‌شده</h1>
+    <p class="muted">{{ '{:,}'.format(total) }} صفحه مطابق جست‌وجو</p>
+  </div>
+  <div class="filter-chips">
+    <a class="chipbtn {{ 'on' if not state }}" href="{{ url_for('pages', q=q) }}">همه</a>
+    <a class="chipbtn {{ 'on' if state == 'main' }}" href="{{ url_for('pages', q=q, state='main') }}">فقط صفحه‌های اصلی</a>
+  </div>
+</div>
+
+<form class="searchbar" method="get" action="{{ url_for('pages') }}">
+  <input type="hidden" name="state" value="{{ state }}">
+  {{ icon('search', 'ic sm') }}
+  <input name="q" value="{{ q }}" placeholder="جست‌وجوی عنوان یا آدرس…" autocomplete="off">
+  <button class="btn solid sm" type="submit">جست‌وجو</button>
+  {% if q %}<a class="btn ghost sm" href="{{ url_for('pages', state=state) }}">پاک کردن</a>{% endif %}
+</form>
+
+<div class="tbl-wrap">
+<table class="tbl">
+  <thead><tr><th>#</th><th>عنوان</th><th>آدرس</th><th>حالت</th><th>وضعیت</th><th>جدول/متن</th><th>زمان</th><th></th></tr></thead>
+  <tbody>
+  {% for p in rows %}
+  <tr>
+    <td class="muted">{{ p.id }}</td>
+    <td class="strong">{{ (p.title or 'بی‌نام')|truncate(42) }}</td>
+    <td class="mono ltr muted">{{ (p.url or '')|truncate(60) }}</td>
+    <td>{% if p.page_state %}{{ badge('صفحه ' ~ p.page_state, 'warn') }}{% else %}{{ badge('اصلی','ok') }}{% endif %}</td>
+    <td>{% if p.http_status == 200 %}{{ badge('۲۰۰','ok') }}{% elif p.http_status %}{{ badge(p.http_status|string,'err') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="nowrap">{{ p.n_tables or 0 }} / {{ p.n_texts or 0 }}</td>
+    <td class="muted nowrap">{{ (p.crawled_at or '')|pdate }}</td>
+    <td class="nowrap">
+      <a class="btn ghost sm" href="{{ url_for('page_detail', pid=p.id) }}">{{ icon('eye','ic sm') }} دیدن</a>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="empty">صفحه‌ای پیدا نشد.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{{ paginate(page, pages_n, total, url_for('pages', q=q, state=state)) }}
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}تنظیمات — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>تنظیمات</h1>
+  <p class="muted">مسیر دیتابیس و پوشه‌ی خروجی — ذخیره می‌شود در <span class="code">viewer_settings.json</span></p></div></div>
+
+<div class="card form-card">
+  <h2>{{ icon('settings') }} مسیرها</h2>
+  <form method="post" class="vform">
+    <label>فایل دیتابیس (site_data.db)
+      <input name="db_path" dir="ltr" value="{{ DB_PATH or '' }}" placeholder="C:\...\site_data.db">
+    </label>
+    <label>پوشه‌ی خروجی (شامل html/ و screenshots/)
+      <input name="out_dir" dir="ltr" value="{{ OUT_DIR or '' }}" placeholder="C:\...\خروجی">
+    </label>
+    <button class="btn solid" type="submit">{{ icon('check') }} ذخیره</button>
+  </form>
+  <p class="hint">اگر مسیر پوشه‌ی خروجی را خالی بگذارید، همان پوشه‌ی دیتابیس در نظر گرفته می‌شود.</p>
+</div>
+
+<div class="card">
+  <h2>{{ icon('alert') }} راهنمای سریع</h2>
+  <ul class="tips">
+    <li>برنامه روی پورت <b>5002</b> اجرا می‌شود: <span class="code ltr">http://127.0.0.1:5002</span></li>
+    <li>برای اجرای دوباره: فایل <span class="code">start_web.bat</span> را باز کنید یا دستور <span class="code ltr" dir="ltr">python viewer.py</span> را اجرا کنید.</li>
+    <li>داده‌ها فقط «خواندنی» هستند؛ خزنده به‌طور هم‌زمان می‌تواند مشغول باشد و شما داده‌ها را ببینید.</li>
+    <li>اگر خروجی اکسل خالی است، از بخش «خروجی اکسل» دکمه‌ی «ساخت مجدد» را بزنید.</li>
+  </ul>
+</div>
+{% endblock %}

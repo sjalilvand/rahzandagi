@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge %}
+{% block title %}{{ (p.title or 'صفحه')|truncate(30) }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<a class="backlink" href="{{ url_for('pages', state='main') }}">{{ icon('right','ic sm') }} بازگشت به فهرست صفحه‌ها</a>
+
+<div class="page-head">
+  <div>
+    <h1>{{ p.title or 'صفحه‌ی بی‌نام' }}</h1>
+    <p class="mono ltr url-line">{{ p.url }}
+      <button class="iconbtn sm" data-copy="{{ p.url }}" title="کپی آدرس">{{ icon('copy','ic sm') }}</button>
+      {% if p.url and p.url.startswith('http') %}<a class="iconbtn sm" href="{{ p.url }}" target="_blank" rel="noopener" title="باز کردن در مرورگر">{{ icon('external','ic sm') }}</a>{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="meta-grid">
+  <div class="meta"><small>شناسه</small><b>{{ p.id }}</b></div>
+  <div class="meta"><small>حالت</small><b>{{ 'اصلی' if not p.page_state else 'صفحه‌بندی ' ~ p.page_state }}</b></div>
+  <div class="meta"><small>وضعیت HTTP</small><b>{{ p.http_status if p.http_status else '—' }}</b></div>
+  <div class="meta"><small>زمان خزش</small><b>{{ (p.crawled_at or '—')|pdate }}</b></div>
+  <div class="meta"><small>جدول‌ها</small><b>{{ p.n_tables or 0 }}</b></div>
+  <div class="meta"><small>متن‌ها</small><b>{{ n_texts }}</b></div>
+  {% if htmlf %}<div class="meta"><small>فایل HTML</small><a class="btn ghost sm" href="{{ url_for('file_view', path=htmlf) }}">{{ icon('code','ic sm') }} نمایش</a></div>{% endif %}
+  {% if shot %}<div class="meta"><small>اسکرین‌شات</small><a class="btn ghost sm" href="{{ url_for('output_file', rel=shot) }}" target="_blank">{{ icon('camera','ic sm') }} باز کردن</a></div>{% endif %}
+</div>
+
+{% if shot %}
+<div class="card">
+  <h2>{{ icon('camera') }} تصویر صفحه</h2>
+  <img class="shot" src="{{ url_for('output_file', rel=shot) }}" alt="اسکرین‌شات صفحه" loading="lazy"
+       onclick="lbOpen(this.src)">
+</div>
+{% endif %}
+
+{% if tables %}
+<div class="card">
+  <h2>{{ icon('table') }} جدول‌های این صفحه ({{ tables|length }})</h2>
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>#</th><th>عنوان/کپشن</th><th>ابعاد</th><th>مجموعه داده</th><th></th></tr></thead>
+    <tbody>
+    {% for x in tables %}
+    <tr>
+      <td class="muted">{{ loop.index }}</td>
+      <td class="strong">{{ x.t.caption or 'جدول بدون عنوان' }}</td>
+      <td>{{ x.t.n_rows }} × {{ x.t.n_cols }}</td>
+      <td>{% if x.t.dataset_table %}<a class="btn ghost sm" href="{{ url_for('dataset_detail', name=x.t.dataset_table) }}">{{ icon('db','ic sm') }} {{ x.t.dataset_table }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td><a class="btn ghost sm" href="{{ url_for('table_detail', tid=x.t.id) }}">{{ icon('eye','ic sm') }} نمایش جدول</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if grouped %}
+<div class="card">
+  <h2>{{ icon('pages') }} متن‌های برداشت‌شده</h2>
+  {% for kind, items in grouped %}
+  <details open class="kind-group">
+    <summary><span class="badge kind-{{ kind }}">{{ kind }}</span> <span class="muted">{{ items|length }} مورد</span></summary>
+    <ul class="textlist">
+      {% for t in items %}<li>{{ t.content }}</li>{% endfor %}
+    </ul>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if links %}
+<div class="card">
+  <h2>{{ icon('link') }} لینک‌های این صفحه ({{ links|length }})</h2>
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>متن لینک</th><th>آدرس</th></tr></thead>
+    <tbody>
+    {% for l in links %}
+    <tr>
+      <td class="strong">{{ (l.text or '—')|truncate(50) }}</td>
+      <td class="mono ltr muted">{{ l.url|truncate(90) }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

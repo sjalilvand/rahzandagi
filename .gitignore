@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
-خروجی/
-gui_settings.json
-site_data.db*
+viewer_settings.json
+site_data.db
 session.json
-crawl.log
+export.xlsx
+output/
+خروجی/
+csv/

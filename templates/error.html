@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block content %}
+<div class="card empty-card tall">
+  <div class="err-ico">{{ icon('alert') }}</div>
+  <h1>خطای {{ code }}</h1>
+  <p class="muted">{{ msg }}</p>
+  <a class="btn solid" href="{{ url_for('dashboard') }}">{{ icon('grid') }} بازگشت به داشبورد</a>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}لاگ خزش — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>لاگ خزش</h1>
+    <p class="muted">{{ rows|length }} رویداد آخر (جدیدترین در بالا)</p>
+  </div>
+  <div class="filter-chips" id="logFilter">
+    <button class="chipbtn on" data-lv="">همه</button>
+    <button class="chipbtn" data-lv="PAGE">PAGE</button>
+    <button class="chipbtn" data-lv="INFO">INFO</button>
+    <button class="chipbtn" data-lv="WARN">WARN</button>
+    <button class="chipbtn" data-lv="SKIP">SKIP</button>
+    <button class="chipbtn" data-lv="ERROR">ERROR</button>
+  </div>
+</div>
+
+<div class="card nopad">
+  <div class="loglist" id="loglist">
+    {% for r in rows %}
+    <div class="logline lv-{{ r.level|lower }}" data-lv="{{ r.level|upper }}">
+      <span class="log-ts mono">{{ (r.ts or '')|pdate }}</span>
+      <span class="log-lv">{{ r.level }}</span>
+      <span class="log-msg">{{ r.message }}</span>
+    </div>
+    {% else %}
+    <div class="empty">لاگی ثبت نشده است.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

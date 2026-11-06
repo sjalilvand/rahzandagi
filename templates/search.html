@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge %}
+{% block title %}جست‌وجو{% if q %}: {{ q }}{% endif %} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>جست‌وجوی سراسری</h1>
+    <p class="muted">{% if q %}{{ '{:,}'.format(n) }} نتیجه برای «<b>{{ q }}</b>»{% else %}چیزی برای جست‌وجو بنویسید{% endif %}</p>
+  </div>
+</div>
+
+{% if not q %}
+<div class="card empty-card">{{ icon('search') }}<h2>جست‌وجو در همه‌ی داده‌ها</h2>
+  <p class="muted">عنوان صفحه‌ها، متن‌های برداشت‌شده، لینک‌ها و جدول‌ها — همگی یک‌جا.</p></div>
+{% endif %}
+
+{% if res.pages %}
+<div class="card">
+  <h2>{{ icon('pages') }} صفحه‌ها ({{ res.pages|length }})</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>عنوان</th><th>آدرس</th><th>زمان</th><th></th></tr></thead>
+    <tbody>{% for p in res.pages %}
+      <tr><td class="strong">{{ (p.title or 'بی‌نام')|truncate(40) }}</td>
+          <td class="mono ltr muted">{{ (p.url or '')|truncate(60) }}</td>
+          <td class="muted nowrap">{{ (p.crawled_at or '')|pdate }}</td>
+          <td><a class="btn ghost sm" href="{{ url_for('page_detail', pid=p.id) }}">{{ icon('eye','ic sm') }} دیدن</a></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if res.texts %}
+<div class="card">
+  <h2>{{ icon('pages') }} متن‌ها ({{ res.texts|length }})</h2>
+  <ul class="hits">
+    {% for t in res.texts %}
+    <li>
+      <span class="badge kind-{{ t.kind }}">{{ t.kind }}</span>
+      <a href="{{ url_for('page_detail', pid=t.page_id) }}">{{ (t.page_title or 'صفحه ' ~ t.page_id)|truncate(28) }}</a>
+      <span class="hit-txt">{{ t.content|truncate(160) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if res.tables %}
+<div class="card">
+  <h2>{{ icon('table') }} جدول‌ها ({{ res.tables|length }})</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>عنوان</th><th>سرستون‌ها</th><th></th></tr></thead>
+    <tbody>{% for t in res.tables %}
+      <tr><td class="strong">{{ t.caption or '—' }}</td>
+          <td class="muted">{{ (t.headers_json or '')|truncate(80) }}</td>
+          <td><a class="btn ghost sm" href="{{ url_for('table_detail', tid=t.id) }}">{{ icon('eye','ic sm') }} نمایش</a></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if res.links %}
+<div class="card">
+  <h2>{{ icon('link') }} لینک‌ها ({{ res.links|length }})</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>متن</th><th>آدرس</th><th>صفحه</th></tr></thead>
+    <tbody>{% for l in res.links %}
+      <tr><td class="strong">{{ (l.text or '—')|truncate(40) }}</td>
+          <td class="mono ltr muted">{{ l.url|truncate(80) }}</td>
+          <td class="muted">{{ (l.page_title or l.page_id)|truncate(24) }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if q and n == 0 %}
+<div class="card empty-card">{{ icon('search') }}<h2>نتیجه‌ای پیدا نشد</h2>
+<p class="muted">عبارت دیگری را امتحان کنید — مثلاً بخشی از نام یا کد ملی.</p></div>
+{% endif %}
+{% endblock %}

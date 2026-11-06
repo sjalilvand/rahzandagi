@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}{{ name }} — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="mono">{{ name }}</h1>
+    <p class="muted">نمایش ذخیره‌ی همان لحظه‌ی خزش</p>
+  </div>
+  <div class="btnrow">
+    <a class="btn ghost" href="{{ url_for('files') }}">{{ icon('right') }} فهرست فایل‌ها</a>
+    <a class="btn solid" href="{{ url_for('output_file', rel=rel) }}" target="_blank">{{ icon('external') }} پنجره‌ی جدا</a>
+  </div>
+</div>
+<div class="frame-card">
+  <iframe src="{{ url_for('output_file', rel=rel) }}" sandbox="allow-same-origin allow-scripts" loading="lazy"></iframe>
+</div>
+{% endblock %}

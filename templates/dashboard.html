@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon, badge %}
+{% block title %}داشبورد — {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>داشبورد</h1>
+    <p class="muted">نمای کلی داده‌های ذخیره‌شده
+    {% if last %} · آخرین خزش: <b>{{ last|pdate }}</b>{% endif %}</p>
+  </div>
+  {% if export_info and export_info.empty %}
+  <a class="btn warn" href="{{ url_for('export_center') }}">{{ icon('alert') }} اکسل خروجی خالی است — اصلاحش کن</a>
+  {% endif %}
+</div>
+
+<div class="stat-grid">
+  <a class="stat" href="{{ url_for('pages', state='main') }}"><div class="stat-ico c1">{{ icon('pages') }}</div><div><b>{{ '{:,}'.format(stats.main_pages) }}</b><small>صفحه‌ی اصلی</small></div></a>
+  <a class="stat" href="{{ url_for('tables') }}"><div class="stat-ico c2">{{ icon('table') }}</div><div><b>{{ '{:,}'.format(stats.tables) }}</b><small>جدول HTML</small></div></a>
+  <a class="stat" href="{{ url_for('datasets') }}"><div class="stat-ico c3">{{ icon('db') }}</div><div><b>{{ '{:,}'.format(stats.drows) }}</b><small>ردیف داده در {{ '{:,}'.format(stats.datasets) }} مجموعه</small></div></a>
+  <a class="stat" href="{{ url_for('pages') }}"><div class="stat-ico c4">{{ icon('layers') }}</div><div><b>{{ '{:,}'.format(stats.texts) }}</b><small>متن برداشت‌شده</small></div></a>
+  <a class="stat" href="{{ url_for('gallery') }}"><div class="stat-ico c5">{{ icon('image') }}</div><div><b>{{ '{:,}'.format(gallery_n) }}</b><small>تصویر</small></div></a>
+  <a class="stat" href="{{ url_for('files') }}"><div class="stat-ico c6">{{ icon('code') }}</div><div><b>{{ '{:,}'.format(html_n) }}</b><small>فایل HTML</small></div></a>
+  <a class="stat" href="{{ url_for('pages') }}"><div class="stat-ico c7">{{ icon('link') }}</div><div><b>{{ '{:,}'.format(stats.links) }}</b><small>لینک</small></div></a>
+  <a class="stat" href="{{ url_for('export_center') }}"><div class="stat-ico c8">{{ icon('download') }}</div><div><b>{{ export_info.sheets if export_info else 0 }}</b><small>شیت در export.xlsx</small></div></a>
+</div>
+
+<div class="col2">
+  <div class="card">
+    <h2>{{ icon('db') }} بزرگ‌ترین مجموعه‌داده‌ها (بر اساس تعداد ردیف)</h2>
+    {% if ds_rows %}
+    <div class="bars">
+      {% set mx = ds_rows[0].rows or 1 %}
+      {% for r in ds_rows %}
+      <a class="bar-row" href="{{ url_for('dataset_detail', name=r.name) }}">
+        <span class="bar-name">{{ r.name|replace('ds_','')|replace('_t1','')|replace('_t2','')|replace('_t3','') }}</span>
+        <span class="bar-track"><span class="bar-fill" style="width: {{ (100 * r.rows / mx)|round(1) }}%"></span></span>
+        <span class="bar-val">{{ '{:,}'.format(r.rows) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">مجموعه‌داده‌ای ثبت نشده است.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>{{ icon('pages') }} ترکیب متن‌های برداشت‌شده</h2>
+    {% if kinds %}
+    {% set kt = kinds|map(attribute='n')|sum or 1 %}
+    {% set colors = ['#10b981','#06b6d4','#8b5cf6','#f59e0b','#ef4444','#3b82f6','#ec4899'] %}
+    {% set ns = namespace(acc=0.0, stops=[]) %}
+    {% for k in kinds[:7] %}
+      {% set start = ns.acc %}
+      {% set ns.acc = ns.acc + (100 * k.n / kt) %}
+      {% set _ = ns.stops.append(colors[loop.index0] ~ ' ' ~ start|round(2) ~ '% ' ~ ns.acc|round(2) ~ '%') %}
+    {% endfor %}
+    <div class="donut-wrap">
+      <div class="donut" style="background: conic-gradient({{ ns.stops|join(', ') }})"></div>
+      <div class="legend">
+        {% for k in kinds[:7] %}
+        <div class="lg-item"><span class="dot" style="background: {{ colors[loop.index0] }}"></span>
+          <b>{{ k.kind }}</b> <span class="muted">{{ '{:,}'.format(k.n) }}</span></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}<p class="empty">متنی ثبت نشده است.</p>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>{{ icon('clock') }} آخرین صفحه‌های خزیده‌شده</h2>
+    <a class="btn ghost sm" href="{{ url_for('pages', state='main') }}">همه‌ی صفحه‌ها {{ icon('left', 'ic sm') }}</a>
+  </div>
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>عنوان</th><th>آدرس</th><th>وضعیت</th><th>جدول‌ها</th><th>زمان</th><th></th></tr></thead>
+    <tbody>
+    {% for p in recent %}
+      <tr>
+        <td class="strong">{{ (p.title or 'بی‌نام')|truncate(38) }}</td>
+        <td class="mono ltr muted">{{ (p.url or '')|truncate(52) }}</td>
+        <td>{% if p.http_status == 200 %}{{ badge('۲۰۰','ok') }}{% elif p.http_status %}{{ badge(p.http_status|string, 'err') }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ p.n_tables or 0 }}</td>
+        <td class="muted nowrap">{{ (p.crawled_at or '')|pdate }}</td>
+        <td><a class="btn ghost sm" href="{{ url_for('page_detail', pid=p.id) }}">{{ icon('eye', 'ic sm') }} دیدن</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">هنوز صفحه‌ای خزیده نشده است.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

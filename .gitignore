@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+خروجی/
+gui_settings.json
+site_data.db*
+session.json
+crawl.log

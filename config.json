@@ -1,0 +1,85 @@
+{
+  "_راهنما": {
+    "اجرا": "ساده‌ترین راه: دوبار کلیک روی run_gui.bat (رابط گرافیکی). خط فرمان: python crawler.py",
+    "site": "ورود: آدرس شروع، یوزر/موبایل، رمز؛ otp_wait_seconds = چند ثانیه منتظر کد پیامکی بمانیم",
+    "crawl": "خزش: max_pages سقف کل، max_pages_per_list سقف صفحه‌بندی هر فهرست، only_patterns = «فقط این صفحات» (عبارت داخل آدرس)، pause_urls = صفحاتی که قبل از برداشت منتظر اعمال فیلتر توسط کاربر می‌مانیم (** = همه)",
+    "pagination": "صفحه‌بندی: mode=auto همه انواع را خودکار تشخیص می‌دهد (دکمه بعدی، شماره صفحه، ?page=N، اسکرول بی‌نهایت)",
+    "safety": "امنیت: لینک‌های عملیاتی (حذف/خروج/...) و مسیرهای ajax باز نمی‌شوند",
+    "extraction": "ذخیره‌سازی: HTML، اسکرین‌شات، متن، جدول ساختاریافته، save_assets = ذخیره CSS/JS/تصاویر/قالب هر صفحه در assets_dir",
+    "export": "خروجی: export.xlsx (همه جداول) + excel_dir (یک فایل اکسل به نام هر صفحه) + CSV اختیاری",
+    "browser": "مرورگر: channel=chrome برای کروم سیستم؛ user_agent واقعی (مهم برای فایروال)؛ proxy شبکه",
+    "output": "مسیر خروجی‌ها (نسبت به پوشه همین فایل؛ مسیر مطلق هم می‌پذیرد)"
+  },
+  "site": {
+    "start_urls": ["https://example.com/panel"],
+    "login_url": null,
+    "username": "",
+    "password": "",
+    "username_selector": null,
+    "password_selector": null,
+    "submit_selector": null,
+    "login_success_indicator": null,
+    "otp_wait_seconds": 15,
+    "manual_login": false
+  },
+  "crawl": {
+    "stay_in_prefix": null,
+    "include_subdomains": false,
+    "max_pages": 500,
+    "max_pages_per_list": 100,
+    "delay_ms": 800,
+    "timeout_ms": 30000,
+    "exclude_patterns": [],
+    "exclude_ajax": true,
+    "action_query_keys": null,
+    "only_patterns": [],
+    "pause_urls": [],
+    "resume": true
+  },
+  "pagination": {
+    "mode": "auto",
+    "next_selector": null,
+    "url_page_param": null,
+    "scroll_wait_ms": 1000,
+    "max_scrolls": 80,
+    "stop_on_same_content": true
+  },
+  "safety": {
+    "skip_ajax_paths": true,
+    "action_params": null
+  },
+  "extraction": {
+    "save_html": true,
+    "save_screenshots": true,
+    "save_texts": true,
+    "create_dataset_tables": true,
+    "save_variant_html": false,
+    "save_assets": true,
+    "max_assets_per_page": 40,
+    "capture_api_json": true,
+    "max_api_body_kb": 200,
+    "max_api_records": 400,
+    "viewport_width": 1366,
+    "viewport_height": 900
+  },
+  "export": {
+    "excel": true,
+    "csv": true,
+    "per_page_excel": true
+  },
+  "browser": {
+    "channel": null,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "proxy": null
+  },
+  "output": {
+    "db_path": "site_data.db",
+    "html_dir": "output/html",
+    "screenshots_dir": "output/screenshots",
+    "assets_dir": "output/assets",
+    "excel_path": "output/export.xlsx",
+    "excel_dir": "output/excel-per-page",
+    "session_file": "session.json",
+    "log_file": "output/crawl.log"
+  }
+}

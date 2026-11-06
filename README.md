@@ -58,6 +58,30 @@ python viewer.py --host 0.0.0.0 --port 5002
 
 > نکته: اگر پورت 5002 اشغال بود: `python viewer.py --port 5050`
 
+### ارتقا از نسخه ۳.۱ — «can't open file viewer.py» دیدید؟
+
+اگر پوشه‌ی قبلی شما (`D:\Projects\site-crawler-v3`) هنوز فایل‌های نسخه‌ی ۳.۱ را دارد
+(یعنی `viewer.py` داخلش نیست)، فایل‌های جدید را روی همان پوشه کپی کنید —
+**داده‌های خروجی (`خروجی`، `site_data.db`، `session.json`) دست‌نخورده می‌مانند:**
+
+```powershell
+# ۱) زیپ جدید (site-crawler-v4.0.zip) را دانلود کنید، بعد:
+Expand-Archive -Path "$HOME\Downloads\site-crawler-v4.0.zip" -DestinationPath "$HOME\Downloads\v4tmp" -Force
+
+# ۲) فایل‌های برنامه را روی پوشه‌ی قبلی بریزید:
+Copy-Item "$HOME\Downloads\v4tmp\site-crawler-v3\*" "D:\Projects\site-crawler-v3" -Recurse -Force
+
+# ۳) پیش‌نیاز جدید (فلسک) نصب می‌شود:
+cd D:\Projects\site-crawler-v3
+pip install -r requirements.txt
+
+# ۴) اجرا:
+python viewer.py
+```
+
+اگر زیپ را جای دیگری ذخیره کرده‌اید، مسیر `$HOME\Downloads\...` را عوض کنید.
+از این به بعد هر بار فقط: `cd D:\Projects\site-crawler-v3; python viewer.py`
+
 ## تازه‌های نسخه ۳.۴ — نمایشگر وب فلسکی 🎉
 
 حالا داده‌های ذخیره‌شده را **در یک وب‌اپلیکیشن زیبا** ببینید — روی پورت **5002**:

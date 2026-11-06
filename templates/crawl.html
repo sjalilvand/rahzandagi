@@ -1,0 +1,235 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}شروع خزش جدید — سایت‌کاو{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>🚀 شروع خزش جدید</h1>
+    <p class="muted">آدرس سامانه را بدهید؛ خزنده با پنجره‌ی مرورگر کار می‌کند و پیشرفتش همین‌جا زنده نمایش داده می‌شود — بدون نیاز به پنجره‌ی دیگر.</p>
+  </div>
+</div>
+
+{% if not crawler_ok %}
+<div class="card">
+  <h2>{{ icon('alert') }} ماژول خزنده در دسترس نیست</h2>
+  <p>برای اجرای خزش باید playwright و مرورگر کرومیوم نصب باشد. در PowerShell همین پوشه اجرا کنید:</p>
+  <pre class="ltr code-block">pip install playwright
+python -m playwright install chromium</pre>
+  <p class="muted">جزئیات خطا: <span class="code">{{ crawler_err }}</span></p>
+</div>
+{% endif %}
+
+<div class="crawl-grid">
+  <!-- ------------------------------------------------ فرم شروع -->
+  <div class="card crawl-form">
+    <h2>{{ icon('settings') }} تنظیمات خزش</h2>
+    <form id="crawlForm" class="vform" autocomplete="off">
+      <label>آدرس سامانه (اجباری)
+        <small>صفحه‌ای که خزش از آن شروع می‌شود — مثلاً صفحه ورود یا صفحه فهرست داده‌ها</small>
+        <input name="url" dir="ltr" placeholder="https://saman.example.ir/login" required>
+      </label>
+      <div class="two-field">
+        <label>نام کاربری / موبایل <small>(اختیاری)</small>
+          <input name="username" dir="ltr" placeholder="نام کاربری یا شماره موبایل">
+        </label>
+        <label>رمز عبور <small>(اختیاری)</small>
+          <input name="password" type="password" dir="ltr" placeholder="••••••••">
+        </label>
+      </div>
+      <label>پوشه‌ی خروجی <small>دیتابیس، عکس‌ها، فایل‌های HTML و اکسل همین‌جا ذخیره می‌شود</small>
+        <input name="out_dir" dir="ltr" value="{{ default_out }}">
+      </label>
+
+      <details class="adv">
+        <summary>{{ icon('settings', 'ic sm') }} تنظیمات پیشرفته</summary>
+        <div class="adv-body">
+          <div class="two-field">
+            <label>حداکثر تعداد صفحه‌ها
+              <input name="max_pages" type="number" min="1" max="100000" value="500">
+            </label>
+            <label>سقف صفحه‌بندی هر فهرست
+              <input name="max_list" type="number" min="1" max="10000" value="100">
+            </label>
+          </div>
+          <label>تأخیر بین درخواست‌ها (میلی‌ثانیه)
+            <input name="delay_ms" type="number" min="0" max="60000" value="800">
+          </label>
+          <label>فقط این صفحات خزیده شوند <small>(یک عبارت در هر خط — داخل آدرس صفحه جست‌وجو می‌شود؛ خالی = همه)</small>
+            <textarea name="only" dir="ltr" rows="3" placeholder="Example:&#10;/Reports/&#10;?page="></textarea>
+          </label>
+        </div>
+      </details>
+
+      <div class="checks">
+        <label class="chk"><input type="checkbox" name="skip_filter" value="1" checked>
+          رد شدن خودکار از صفحات فیلتر (کد ملی / کد پرونده / کد رهگیری)</label>
+        <label class="chk"><input type="checkbox" name="shots" value="1" checked>
+          ذخیره‌ی اسکرین‌شات هر صفحه</label>
+        <label class="chk"><input type="checkbox" name="assets" value="1" checked>
+          ذخیره‌ی فایل‌های جانبی (عکس/CSS/JS سایت)</label>
+        <label class="chk"><input type="checkbox" name="fresh" value="1">
+          خزش تازه (دیتابیس قبلی بایگانی می‌شود — در غیر این صورت ادامه‌ی خزش قبلی)</label>
+        <label class="chk"><input type="checkbox" name="manual" value="1">
+          ورود دستی: خودم در پنجره‌ی مرورگر لاگین می‌کنم (برای کپچا)</label>
+        <label class="chk"><input type="checkbox" name="headless" value="1">
+          مرورگر مخفی اجرا شود (پنجره‌ای باز نشود — برای ورود/کد پیامکی مناسب نیست)</label>
+      </div>
+
+      <div class="btnrow">
+        <button class="btn solid lg" type="submit" id="btnStart">{{ icon('rocket') }} شروع خزش</button>
+        <span id="startMsg" class="muted"></span>
+      </div>
+      <p class="hint">💡 اگر سامانه کد پیامکی (OTP) بخواهد، پیامش را در لاگ پایین می‌بینید؛
+      کد را در همان پنجره‌ی مرورگر وارد و تأیید کنید — برنامه خودش ادامه می‌دهد.</p>
+    </form>
+  </div>
+
+  <!-- ------------------------------------------------ پنل زنده -->
+  <div class="card crawl-live" id="liveCard">
+    <h2>{{ icon('activity') }} وضعیت زنده‌ی خزش</h2>
+
+    <div id="idleBox" class="live-idle">
+      <div class="hero-ico">{{ icon('rocket') }}</div>
+      <p class="muted">هنوز خزشی شروع نشده است.<br>فرم سمت راست را پر کنید و «شروع خزش» را بزنید.</p>
+    </div>
+
+    <div id="runBox" hidden>
+      <div class="live-row">
+        <span class="pill hot" id="phase">در حال خزش</span>
+        <span class="badge" id="counter">۰ از ۰</span>
+        <span class="badge met" id="elapsed">۰۰:۰۰</span>
+      </div>
+      <div class="crawl-prog"><i id="progFill"></i></div>
+      <div class="url-line mono" id="curUrl" dir="ltr">—</div>
+
+      <div class="btnrow" style="margin:12px 0">
+        <button class="btn warn" id="btnStop">{{ icon('x') }} توقف خزش</button>
+        <button class="btn" id="btnSkip">{{ icon('right') }} رد کردن صفحه‌ی فعلی</button>
+      </div>
+
+      <div class="clog" id="clog"></div>
+    </div>
+
+    <div id="doneBox" hidden>
+      <div class="live-row">
+        <span class="pill" id="donePill">پایان یافت</span>
+        <span class="badge" id="doneTime"></span>
+      </div>
+      <div class="meta-grid" id="doneStats"></div>
+      <div class="btnrow">
+        <a class="btn solid" href="{{ url_for('dashboard') }}">{{ icon('grid') }} نمایش داده‌ها در داشبورد</a>
+        <a class="btn" href="{{ url_for('pages') }}">{{ icon('pages') }} صفحه‌ها</a>
+        <a class="btn" href="{{ url_for('tables') }}">{{ icon('table') }} جدول‌ها</a>
+      </div>
+      <div class="clog" id="clog2"></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  var running = {{ 'true' if snap.running else 'false' }};
+  var $ = function (id) { return document.getElementById(id); };
+  var fa = function (n) { return String(n == null ? 0 : n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); };
+
+  function lvClass(lv) {
+    if (lv === 'error') return 'lv-error';
+    if (lv === 'warn') return 'lv-warn';
+    if (lv === 'ok') return 'lv-ok';
+    return 'lv-info';
+  }
+  function lvText(lv) {
+    return lv === 'error' ? 'خطا' : lv === 'warn' ? 'هشدار' : lv === 'ok' ? 'انجام' : 'اطلاع';
+  }
+  function addLog(box, lines) {
+    if (!box || !lines || !lines.length) return;
+    box.innerHTML = lines.map(function (l) {
+      return '<div class="logline ' + lvClass(l.lv) + '">' +
+             '<span class="log-ts">' + l.t + '</span>' +
+             '<span class="log-lv">' + lvText(l.lv) + '</span>' +
+             '<span class="log-msg"></span></div>';
+    }).join('');
+    var msgs = box.querySelectorAll('.log-msg');
+    lines.forEach(function (l, i) { msgs[i].textContent = l.m; });
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function fmtElapsed(iso) {
+    if (!iso) return '۰۰:۰۰';
+    var t = new Date(iso.replace(' ', 'T'));
+    var s = Math.max(0, Math.floor((Date.now() - t.getTime()) / 1000));
+    var m = Math.floor(s / 60); s = s % 60;
+    return fa(String(m).padStart(2, '0')) + ':' + fa(String(s).padStart(2, '0'));
+  }
+
+  function render(s) {
+    running = s.running;
+    var run = $('runBox'), done = $('doneBox'), idle = $('idleBox');
+    var btn = $('btnStart');
+    btn.disabled = running;
+    if (running) {
+      idle.hidden = true; done.hidden = true; run.hidden = false;
+      $('phase').textContent = s.phase || 'در حال خزش';
+      var pct = s.total > 0 ? Math.round(100 * s.done / s.total) : (s.done > 0 ? 100 : 0);
+      $('progFill').style.width = Math.max(pct, 3) + '%';
+      $('counter').textContent = fa(s.done) + ' از ' + fa(s.total);
+      $('elapsed').textContent = fmtElapsed(s.started_at);
+      $('curUrl').textContent = s.url || '—';
+      addLog($('clog'), s.log);
+    } else if (s.result) {
+      idle.hidden = true; run.hidden = true; done.hidden = false;
+      var r = s.result;
+      $('donePill').textContent = r.ok ? 'خزش با موفقیت پایان یافت ✅' : 'خزش ناموفق بود ❌';
+      $('donePill').className = 'pill ' + (r.ok ? 'hot' : '');
+      $('doneTime').textContent = (s.ended_at || '').replace('T', ' ');
+      var rows = [
+        ['صفحه‌ها', r.pages], ['جدول‌ها', r.tables], ['ردیف‌ها', r.rows],
+        ['متن‌ها', r.texts], ['لینک‌ها', r.links]
+      ];
+      $('doneStats').innerHTML = rows.map(function (x) {
+        return '<div class="meta"><small>' + x[0] + '</small><b>' + fa(x[1] == null ? '—' : x[1]) + '</b></div>';
+      }).join('') + (r.hint ? '<div class="meta" style="grid-column:1/-1"><small>توضیح</small><b>' + '' + '</b></div>' : '');
+      if (r.hint) { $('doneStats').querySelector('.meta:last-child b').textContent = r.hint; }
+      addLog($('clog2'), s.log);
+    } else {
+      idle.hidden = false; run.hidden = true; done.hidden = true;
+    }
+  }
+
+  function poll() {
+    fetch('/api/crawl/status', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () {});
+  }
+
+  $('btnStop') && $('btnStop').addEventListener('click', function () {
+    fetch('/api/crawl/stop', { method: 'POST' });
+  });
+  $('btnSkip') && $('btnSkip').addEventListener('click', function () {
+    fetch('/api/crawl/skip', { method: 'POST' });
+  });
+
+  $('crawlForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = $('startMsg');
+    msg.textContent = 'در حال ارسال...';
+    fetch('{{ url_for("crawl_start") }}', { method: 'POST', body: new FormData(this) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        msg.textContent = j.msg || '';
+        if (j.ok) { msg.textContent = ''; poll(); }
+      })
+      .catch(function () { msg.textContent = 'ارسال ناموفق بود.'; });
+  });
+
+  poll();
+  setInterval(poll, 1500);
+})();
+</script>
+{% endblock %}

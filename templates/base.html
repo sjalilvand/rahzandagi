@@ -15,13 +15,14 @@
     <div class="brand-logo">{{ icon('layers') }}</div>
     <div class="brand-txt">
       <b>سایت‌کاو</b>
-      <small>نمایشگر داده‌ها <span class="ver">v{{ VERSION }}</span></small>
+      <small>وب‌اپ یکپارچه <span class="ver">v{{ VERSION }}</span></small>
     </div>
   </div>
 
   <nav class="nav">
     {% set ep = request.endpoint %}
     <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">{{ icon('grid') }}<span>داشبورد</span></a>
+    <a href="{{ url_for('crawl_page') }}" class="{{ 'on' if ep == 'crawl_page' }} crawl-link">{{ icon('rocket') }}<span>شروع خزش جدید</span></a>
     <a href="{{ url_for('pages') }}" class="{{ 'on' if ep == 'pages' or ep == 'page_detail' }}">{{ icon('pages') }}<span>صفحه‌ها</span></a>
     <a href="{{ url_for('tables') }}" class="{{ 'on' if ep == 'tables' or ep == 'table_detail' }}">{{ icon('table') }}<span>جدول‌ها</span></a>
     <a href="{{ url_for('datasets') }}" class="{{ 'on' if ep == 'datasets' or ep == 'dataset_detail' }}">{{ icon('db') }}<span>مجموعه‌داده‌ها</span></a>
@@ -72,10 +73,11 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="foot">سایت‌کاو نسخه {{ VERSION }} — نمایشگر داده‌های خزیده‌شده · اجرا روی پورت {{ request.host.split(':')[1] if ':' in request.host else '5002' }}</footer>
+  <footer class="foot">سایت‌کاو نسخه {{ VERSION }} — نمایش داده‌ها + شروع خزش، همه در یک برنامه · اجرا روی پورت {{ request.host.split(':')[1] if ':' in request.host else '5002' }}</footer>
 </div>
 
 <div class="lightbox" id="lightbox"><button class="lb-x" onclick="lbClose()">{{ icon('x') }}</button><img id="lbImg" alt=""></div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

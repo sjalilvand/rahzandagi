@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-سایت‌کاو — نمایشگر وب داده‌ها (نسخه ۳.۴)
-=========================================
-برنامه‌ای فلسکی و زیبا برای خواندن و نمایش کامل داده‌های ذخیره‌شده توسط خزنده:
+سایت‌کاو — وب‌اپ یکپارچه (نسخه ۴.۰)
+====================================
+یک برنامه برای همه‌کاره: هم خزش، هم نمایش کامل داده‌ها — بدون نیاز به پنجره tkinter.
 
+  🚀 شروع خزش جدید از داخل وب (آدرس + یوزر/پس + گزینه‌ها + پیشرفت زنده + توقف)
   • داشبورد گرافیکی (آمار، نمودار، آخرین صفحه‌ها)
   • صفحه‌های خزیده‌شده + متن‌ها + لینک‌ها + تصویر صفحه
   • جدول‌های HTML استخراج‌شده با نمای جدولی
@@ -13,6 +14,9 @@
   • مرورگر فایل‌های HTML ذخیره‌شده (نمایش واقعی داخل برنامه)
   • جست‌وجوی سراسری، لاگ خزش و پاسخ‌های API
   • ساخت دوباره‌ی خروجی اکسل کامل (وقتی export.xlsx خالی مانده)
+
+نکته‌ی ورود دومرحله‌ای: هنگام خزش، پنجره‌ی مرورگر باز می‌شود؛ اگر سامانه کد پیامکی
+خواست، کد را خودتان در همان پنجره‌ی مرورگر وارد و تأیید کنید (نیازی به کادر جدا نیست).
 
 اجرا:            python viewer.py           →  http://127.0.0.1:5002
 گزینه‌ها:        --db مسیر دیتابیس   --out پوشه خروجی   --port 5002   --host 127.0.0.1
@@ -29,13 +33,14 @@ import sys
 import threading
 import time
 import webbrowser
+from collections import deque
 from datetime import datetime
 
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, send_from_directory, url_for)
 
-APP_NAME = "سایت‌کاو | نمایشگر داده‌ها"
-VERSION = "۳.۴"
+APP_NAME = "سایت‌کاو | وب‌اپ یکپارچه"
+VERSION = "۴.۰"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(APP_DIR, "viewer_settings.json")
 
@@ -780,6 +785,279 @@ def api_stats():
     })
 
 
+# ------------------------------------------------------------------ شروع خزش از وب
+# بارگذاری ماژول خزنده (همان پوشه) — اگر playwright نصب نباشد، صفحه با پیام مناسب نشان داده می‌شود
+try:
+    import crawler as _crawler
+    _CRAWLER_ERR = ""
+except Exception as _e:            # pragma: no cover
+    _crawler = None
+    _CRAWLER_ERR = str(_e)
+
+CRAWL_LOCK = threading.Lock()
+CRAWL = {
+    "running": False,
+    "phase": "آماده",
+    "done": 0, "total": 0, "url": "",
+    "started_at": None, "ended_at": None,
+    "result": None,
+    "stop_req": False, "skip_req": False,
+    "out_dir": "",
+    "log": deque(maxlen=600),
+}
+
+
+def _clog(lv, msg):
+    """افزودن یک خط به لاگ زنده‌ی صفحه‌ی وب"""
+    with CRAWL_LOCK:
+        CRAWL["log"].append({"t": datetime.now().strftime("%H:%M:%S"),
+                             "lv": lv, "m": str(msg)})
+
+
+class _WebLogStream:
+    """جایگزین sys.stdout هنگام خزش وب — هم ترمینال چاپ می‌کند هم در بافر صفحه می‌ریزد"""
+
+    def __init__(self, original):
+        self.original = original
+
+    def write(self, s):
+        try:
+            self.original.write(s)
+            self.original.flush()
+        except Exception:
+            pass
+        try:
+            for ln in str(s).splitlines():
+                ln = ln.strip()
+                if not ln or set(ln) == {"="}:
+                    continue
+                lv = "info"
+                if "[خطا]" in ln:
+                    lv = "error"
+                elif "[!]" in ln:
+                    lv = "warn"
+                elif "[+]" in ln:
+                    lv = "ok"
+                _clog(lv, ln)
+        except Exception:
+            pass
+        return len(s)
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except Exception:
+            pass
+
+
+if _crawler is not None:
+    class WebHooks(_crawler.UIHooks):
+        """قلاب‌های خزش در حالت وب:
+        پیشرفت → نوار پیشرفت صفحه؛ کد پیامکی → کاربر در پنجره مرورگر وارد می‌کند
+        (پاسخ OTP_IN_BROWSER)؛ «رد کردن صفحه» و «توقف» هم از دکمه‌های همین صفحه."""
+
+        def __init__(self):
+            self.stopped = False
+
+        def progress(self, done, total, url):
+            with CRAWL_LOCK:
+                CRAWL["done"] = int(done or 0)
+                CRAWL["total"] = int(total or 0)
+                CRAWL["url"] = url or ""
+                CRAWL["phase"] = "در حال خزش"
+
+        def ask_otp(self, text):
+            _clog("warn", f"{text} — کد را در پنجره‌ی مرورگر وارد و تأیید کنید (سقف ۳ دقیقه).")
+            return _crawler.OTP_IN_BROWSER
+
+        def skip_now(self):
+            with CRAWL_LOCK:
+                req = CRAWL["skip_req"]
+                CRAWL["skip_req"] = False
+            return bool(req)
+else:
+    WebHooks = None
+
+
+def _crawl_snapshot():
+    with CRAWL_LOCK:
+        return {"running": CRAWL["running"], "phase": CRAWL["phase"],
+                "done": CRAWL["done"], "total": CRAWL["total"], "url": CRAWL["url"],
+                "started_at": CRAWL["started_at"], "ended_at": CRAWL["ended_at"],
+                "result": CRAWL["result"], "out_dir": CRAWL["out_dir"],
+                "log": list(CRAWL["log"])[-180:]}
+
+
+def _crawl_worker(cfg, out_dir, opts):
+    """نخ اجرای خزش — مثل crawler_gui ولی لاگ و نتیجه به صفحه‌ی وب می‌رود"""
+    global DB_PATH, OUT_DIR
+    old_stdout = sys.stdout
+    try:
+        _crawler.HOOKS = WebHooks()
+    except Exception:
+        pass
+    sys.stdout = _WebLogStream(old_stdout)
+    res = {}
+    try:
+        _clog("info", "اجرای خزنده آغاز شد...")
+        res = _crawler.run_crawl(cfg, base_dir=out_dir,
+                                 fresh=opts["fresh"], headed=opts["headed"],
+                                 manual=opts["manual"],
+                                 log_file=os.path.join(out_dir, "crawl.log"))
+    except Exception as e:
+        res = {"ok": False, "error": "exception", "hint": str(e)}
+        _clog("error", f"خطای غیرمنتظره: {e}")
+    finally:
+        sys.stdout = old_stdout
+        with CRAWL_LOCK:
+            CRAWL["running"] = False
+            CRAWL["ended_at"] = datetime.now().isoformat(timespec="seconds")
+            CRAWL["phase"] = "پایان یافت" if res.get("ok") else "ناموفق"
+            CRAWL["result"] = {k: res.get(k) for k in
+                               ("ok", "error", "hint", "pages", "tables",
+                                "rows", "texts", "links")}
+        # نمایشگر خودکار روی خروجی تازه تنظیم می‌شود
+        try:
+            ndb = res.get("db_path") or os.path.join(out_dir, "site_data.db")
+            if os.path.isfile(ndb):
+                DB_PATH = os.path.abspath(ndb)
+                OUT_DIR = os.path.abspath(out_dir)
+                save_settings({"db_path": DB_PATH, "out_dir": OUT_DIR})
+                _gallery_cache["key"] = None
+                _clog("ok", "نمایشگر به خروجی تازه متصل شد — داشبورد را باز کنید.")
+        except Exception:
+            pass
+
+
+def _form_bool(v, default=False):
+    if v is None:
+        return default
+    return str(v).lower() in ("1", "true", "on", "yes", "بله")
+
+
+@app.route("/crawl")
+def crawl_page():
+    default_out = OUT_DIR or load_settings().get("out_dir") or os.path.join(APP_DIR, "خروجی")
+    return render_template("crawl.html", snap=_crawl_snapshot(),
+                           crawler_ok=(_crawler is not None), crawler_err=_CRAWLER_ERR,
+                           default_out=default_out)
+
+
+@app.route("/api/crawl/status")
+def crawl_status():
+    return jsonify(_crawl_snapshot())
+
+
+@app.route("/api/crawl/start", methods=["POST"])
+def crawl_start():
+    if _crawler is None:
+        return jsonify({"ok": False, "msg": "ماژول خزنده بارگذاری نشد. ابتدا playwright را نصب کنید:  pip install playwright && python -m playwright install chromium"}), 500
+    with CRAWL_LOCK:
+        if CRAWL["running"]:
+            return jsonify({"ok": False, "msg": "یک خزش در حال اجراست — ابتدا آن را متوقف کنید."}), 409
+    data = request.get_json(silent=True) or request.form
+    url = (data.get("url") or "").strip().strip('"')
+    if not url:
+        return jsonify({"ok": False, "msg": "آدرس سامانه را وارد کنید."}), 400
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    out_dir = (data.get("out_dir") or "").strip().strip('"') or os.path.join(APP_DIR, "خروجی")
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"ساخت پوشه‌ی خروجی ناموفق بود: {e}"}), 400
+
+    def _num(k, d):
+        try:
+            return int(float(data.get(k) or d))
+        except Exception:
+            return d
+
+    only = [l.strip() for l in (data.get("only") or "").splitlines() if l.strip()]
+    fresh = _form_bool(data.get("fresh"))
+    manual = _form_bool(data.get("manual"))
+    headless = _form_bool(data.get("headless"))
+    headed = (not headless) or manual   # ورود دستی همیشه مرورگر مرئی می‌خواهد
+
+    # ساخت تنظیمات — دقیقاً همان قالبی که رابط گرافیکی می‌سازد
+    cfg = {
+        "site": {"start_urls": [url], "login_url": None,
+                 "username": (data.get("username") or "").strip(),
+                 "password": data.get("password") or "",
+                 "manual_login": manual},
+        "crawl": {"max_pages": _num("max_pages", 500),
+                  "max_pages_per_list": _num("max_list", 100),
+                  "delay_ms": _num("delay_ms", 800),
+                  "timeout_ms": 30000,
+                  "resume": not fresh,
+                  "only_patterns": only,
+                  "pause_urls": [],
+                  "skip_filter_pages": _form_bool(data.get("skip_filter"), True)},
+        "pagination": {"mode": "auto"},
+        "extraction": {"save_html": True,
+                       "save_screenshots": _form_bool(data.get("shots"), True),
+                       "save_texts": True,
+                       "create_dataset_tables": True,
+                       "save_assets": _form_bool(data.get("assets"), True),
+                       "capture_api_json": True,
+                       "viewport_width": 1366, "viewport_height": 900},
+        "export": {"excel": True, "csv": True, "per_page_excel": True},
+        "browser": {},
+        "output": {"db_path": os.path.join(out_dir, "site_data.db"),
+                   "html_dir": os.path.join(out_dir, "html"),
+                   "screenshots_dir": os.path.join(out_dir, "screenshots"),
+                   "assets_dir": os.path.join(out_dir, "assets"),
+                   "excel_path": os.path.join(out_dir, "export.xlsx"),
+                   "excel_dir": os.path.join(out_dir, "excel-per-page"),
+                   "session_file": os.path.join(out_dir, "session.json"),
+                   "log_file": os.path.join(out_dir, "crawl.log")},
+    }
+    try:
+        with open(os.path.join(out_dir, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    with CRAWL_LOCK:
+        CRAWL.update(running=True, phase="آماده‌سازی مرورگر", done=0, total=0, url=url,
+                     started_at=datetime.now().isoformat(timespec="seconds"),
+                     ended_at=None, result=None, stop_req=False, skip_req=False,
+                     out_dir=os.path.abspath(out_dir))
+        CRAWL["log"].clear()
+    _clog("info", f"خزش «{url}» ثبت شد — پوشه خروجی: {out_dir}")
+    if headed:
+        _clog("info", "پنجره‌ی مرورگر باز می‌شود؛ اگر سامانه ورود/کد پیامکی خواست، در همان پنجره انجام دهید.")
+    threading.Thread(target=_crawl_worker,
+                     args=(cfg, out_dir, {"fresh": fresh, "headed": headed, "manual": manual}),
+                     daemon=True).start()
+    return jsonify({"ok": True, "msg": "خزش آغاز شد — پیشرفت در همین صفحه نمایش داده می‌شود."})
+
+
+@app.route("/api/crawl/stop", methods=["POST"])
+def crawl_stop():
+    with CRAWL_LOCK:
+        if not CRAWL["running"]:
+            return jsonify({"ok": False, "msg": "خزشی در حال اجرا نیست."})
+        CRAWL["stop_req"] = True
+    try:
+        if _crawler is not None:
+            _crawler.HOOKS.stopped = True
+    except Exception:
+        pass
+    _clog("warn", "درخواست توقف ثبت شد — پس از پایان صفحه‌ی فعلی متوقف می‌شود.")
+    return jsonify({"ok": True, "msg": "درخواست توقف ثبت شد."})
+
+
+@app.route("/api/crawl/skip", methods=["POST"])
+def crawl_skip():
+    with CRAWL_LOCK:
+        if not CRAWL["running"]:
+            return jsonify({"ok": False, "msg": "خزشی در حال اجرا نیست."})
+        CRAWL["skip_req"] = True
+    _clog("warn", "درخواست «رد کردن صفحه‌ی فعلی» ثبت شد.")
+    return jsonify({"ok": True, "msg": "صفحه‌ی فعلی رد می‌شود."})
+
+
 # ------------------------------------------------------------------ خطاها
 @app.errorhandler(404)
 def nf(e):
@@ -813,7 +1091,7 @@ def main():
 
     url = f"http://{args.host}:{args.port}"
     print("=" * 62)
-    print(f"  سایت‌کاو — نمایشگر داده‌ها (نسخه {VERSION})")
+    print(f"  سایت‌کاو — وب‌اپ یکپارچه: نمایش داده‌ها + شروع خزش (نسخه {VERSION})")
     print(f"  آدرس:  {url}")
     print(f"  دیتابیس:  {DB_PATH or 'پیدا نشد!'}")
     print(f"  پوشه خروجی:  {OUT_DIR or '—'}")

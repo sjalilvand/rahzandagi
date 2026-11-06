@@ -7,3 +7,8 @@ export.xlsx
 output/
 خروجی/
 csv/
+gui_settings.json
+crawl.log
+excel-per-page/
+*.db.bak-*
+*.zip

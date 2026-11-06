@@ -180,7 +180,7 @@ _gallery_cache = {"key": None, "items": []}
 
 
 def gallery_items():
-    key = (OUT_DIR, int(os.path.getmtime(OUT_DIR)) if os.path.isdir(OUT_DIR) else 0)
+    key = (OUT_DIR, int(os.path.getmtime(OUT_DIR)) if (OUT_DIR and os.path.isdir(OUT_DIR)) else 0)
     if _gallery_cache["key"] == key:
         return _gallery_cache["items"]
     items = []
@@ -387,7 +387,7 @@ def rebuild_full_export():
         for i, h in enumerate(headers, start=1):
             wds = [len(str(h))] + [len(str(r[i - 1])) for r in rows[:300] if i - 1 < len(r)]
             ws.column_dimensions[get_column_letter(i)].width = min(55, max(10, (max(wds) if wds else 10) + 4))
-    path = os.path.join(OUT_DIR, "export.xlsx")
+    path = os.path.join(OUT_DIR or APP_DIR, "export.xlsx")
     wb.save(path)
     return path, len(sheets) - 1
 

@@ -23,6 +23,7 @@
     {% set ep = request.endpoint %}
     <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}">{{ icon('grid') }}<span>داشبورد</span></a>
     <a href="{{ url_for('crawl_page') }}" class="{{ 'on' if ep == 'crawl_page' }} crawl-link">{{ icon('rocket') }}<span>شروع خزش جدید</span></a>
+    <a href="{{ url_for('runs_page') }}" class="{{ 'on' if ep == 'runs_page' }}">{{ icon('archive') }}<span>خزش‌های من</span></a>
     <a href="{{ url_for('pages') }}" class="{{ 'on' if ep == 'pages' or ep == 'page_detail' }}">{{ icon('pages') }}<span>صفحه‌ها</span></a>
     <a href="{{ url_for('tables') }}" class="{{ 'on' if ep == 'tables' or ep == 'table_detail' }}">{{ icon('table') }}<span>جدول‌ها</span></a>
     <a href="{{ url_for('datasets') }}" class="{{ 'on' if ep == 'datasets' or ep == 'dataset_detail' }}">{{ icon('db') }}<span>مجموعه‌داده‌ها</span></a>
@@ -39,7 +40,7 @@
   <div class="side-foot">
     <div class="dbchip" title="{{ DB_PATH }}">
       {{ icon('db', 'ic sm') }}
-      <div><b>site_data.db</b><small>{{ DB_SIZE }}</small></div>
+      <div><b>{{ RUN_NAME or 'site_data.db' }}</b><small>{{ DB_SIZE }}</small></div>
     </div>
   </div>
   {% endif %}
@@ -54,7 +55,20 @@
     </form>
     {% endif %}
     <div class="top-actions">
-      {% if OUT_DIR %}<span class="chip" title="{{ OUT_DIR }}">{{ icon('folder', 'ic sm') }} {{ OUT_DIR|default('—') }}</span>{% endif %}
+      {% set rlist = runs_quick() %}
+      {% if rlist %}
+      <form class="runpick" method="post" action="{{ url_for('runs_select') }}"
+            title="خزش فعال — با تغییر این، همه‌ی صفحه‌ها داده‌های همان خزش را نشان می‌دهند">
+        {{ icon('archive', 'ic sm') }}
+        <select name="id" onchange="this.form.submit()">
+          {% for r in rlist %}
+          <option value="{{ r.id }}" {{ 'selected' if r.cur }}>{{ r.name }}{{ ' ★' if r.cur }}</option>
+          {% endfor %}
+        </select>
+        <noscript><button class="btn sm ghost">برو</button></noscript>
+      </form>
+      {% endif %}
+      <a class="iconbtn" href="{{ url_for('runs_page') }}" title="مدیریت خزش‌ها">{{ icon('layers', 'ic sm') }}</a>
       <button class="iconbtn" id="themeBtn" title="تغییر پوسته روشن/تاریک">{{ icon('sun', 'ic sm') }}</button>
     </div>
   </header>
@@ -73,7 +87,7 @@
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="foot">سایت‌کاو نسخه {{ VERSION }} — نمایش داده‌ها + شروع خزش، همه در یک برنامه · اجرا روی پورت {{ request.host.split(':')[1] if ':' in request.host else '5002' }}</footer>
+  <footer class="foot">سایت‌کاو نسخه {{ VERSION }} — خزش و نمایش داده‌ها، هر خزش در پوشه‌ی خودش · اجرا روی پورت {{ request.host.split(':')[1] if ':' in request.host else '5002' }}</footer>
 </div>
 
 <div class="lightbox" id="lightbox"><button class="lb-x" onclick="lbClose()">{{ icon('x') }}</button><img id="lbImg" alt=""></div>

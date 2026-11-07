@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import icon %}
+{% block title %}خزش‌های من — {{ APP_NAME }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>🗂 خزش‌های من</h1>
+    <p class="muted">هر خزش پوشه‌ی مستقل خودش را دارد (دیتابیس، عکس‌ها، فایل‌های HTML، اکسل).
+    یکی را انتخاب کنید تا همه‌ی صفحات همان را نشان دهند.</p>
+  </div>
+  <a class="btn solid" href="{{ url_for('crawl_page') }}">{{ icon('rocket') }} شروع خزش جدید</a>
+</div>
+
+<div class="card">
+  <h2>{{ icon('archive') }} فهرست خزش‌ها <span class="badge">{{ runs|length }}</span></h2>
+
+  {% if not runs %}
+  <p class="muted" style="margin:10px 0">هنوز خزشی ثبت نشده است. یک خزش جدید شروع کنید یا
+  خروجی قدیمی را از فرم پایین همین صفحه اضافه کنید.</p>
+  {% endif %}
+
+  <div class="run-list">
+    {% for r in runs %}
+    <div class="run-item {{ 'cur' if r.is_current }}">
+      <div class="run-main">
+        <div class="run-title">
+          {% if r.is_current %}<span class="pill hot">فعلی</span>{% endif %}
+          <b>{{ r.name }}</b>
+          {% if not r.db_ok %}<span class="badge">دیتابیس پیدا نشد</span>{% endif %}
+        </div>
+        {% if r.url %}<div class="mono run-url" dir="ltr">{{ r.url }}</div>{% endif %}
+        <div class="run-meta muted">
+          <span title="{{ r.out_dir }}">{{ icon('folder', 'ic sm') }} <span dir="ltr">{{ r.out_dir }}</span></span>
+          <span>{{ icon('clock', 'ic sm') }} {{ (r.created_at or '—')|replace('T', ' ') }}</span>
+          {% if r.pages is not none %}<span>{{ icon('pages', 'ic sm') }} {{ '{:,}'.format(r.pages) }} صفحه</span>{% endif %}
+          <span>{{ icon('db', 'ic sm') }} {{ r.size }}</span>
+        </div>
+      </div>
+      <div class="run-actions">
+        {% if r.is_current %}
+        <span class="badge met">در حال نمایش</span>
+        {% else %}
+        <form method="post" action="{{ url_for('runs_select') }}">
+          <input type="hidden" name="id" value="{{ r.id }}">
+          <button class="btn solid sm" {{ 'disabled' if not r.db_ok }} title="همه‌ی صفحات این خزش را نشان می‌دهند">
+            {{ icon('eye', 'ic sm') }} انتخاب و نمایش</button>
+        </form>
+        {% endif %}
+        <details class="run-more">
+          <summary class="btn ghost sm" title="گزینه‌های بیشتر">⋯</summary>
+          <div class="run-more-body">
+            <form method="post" action="{{ url_for('runs_rename') }}" class="run-rename">
+              <input type="hidden" name="id" value="{{ r.id }}">
+              <input name="name" value="{{ r.name }}" placeholder="نام جدید این خزش">
+              <button class="btn sm">تغییر نام</button>
+            </form>
+            <form method="post" action="{{ url_for('runs_remove') }}"
+                  onsubmit="return confirm('از فهرست حذف شود؟ فایل‌ها و پوشه‌ها دست‌نخورده می‌مانند.');">
+              <input type="hidden" name="id" value="{{ r.id }}">
+              <button class="btn warn sm">{{ icon('x', 'ic sm') }} حذف از فهرست</button>
+            </form>
+          </div>
+        </details>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if runs %}
+  <p class="hint">💡 «حذف از فهرست» فقط این نام را از برنامه برمی‌دارد؛ هیچ فایلی پاک نمی‌شود.
+  برای پاک کردن واقعی، خود پوشه را در ویندوز حذف کنید.</p>
+  {% endif %}
+</div>
+
+<div class="card form-card">
+  <h2>{{ icon('folder') }} تعریف خروجی جداگانه (افزودن دستی)</h2>
+  <p class="muted">اگر خروجی یک خزش جای دیگری است — مثلاً روی دسکتاپ یا درایو دیگر — مسیر پوشه‌ای که
+  داخلش <span class="code">site_data.db</span> هست را بدهید تا به این فهرست اضافه شود.</p>
+  <form method="post" action="{{ url_for('runs_add') }}" class="vform">
+    <label>مسیر پوشه‌ی خروجی یا خود فایل دیتابیس
+      <input name="path" dir="ltr" placeholder="D:\Projects\site-crawler-v3\خروجی\crawl-1 یا D:\...\site_data.db" required>
+    </label>
+    <button class="btn solid">{{ icon('check') }} افزودن به فهرست</button>
+  </form>
+  <p class="hint">نکته: خزش‌هایی که خودتان از همین برنامه شروع داده‌اید، خودکار ثبت می‌شوند و نیازی به این فرم ندارند.</p>
+</div>
+
+{% endblock %}

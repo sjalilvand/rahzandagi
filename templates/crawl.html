@@ -25,6 +25,9 @@ python -m playwright install chromium</pre>
   <div class="card crawl-form">
     <h2>{{ icon('settings') }} تنظیمات خزش</h2>
     <form id="crawlForm" class="vform" autocomplete="off">
+      <label>نام این خزش <small>در فهرست «خزش‌های من» با همین نام دیده می‌شود</small>
+        <input name="run_name" value="{{ suggested_name }}">
+      </label>
       <label>آدرس سامانه (اجباری)
         <small>صفحه‌ای که خزش از آن شروع می‌شود — مثلاً صفحه ورود یا صفحه فهرست داده‌ها</small>
         <input name="url" dir="ltr" placeholder="https://saman.example.ir/login" required>
@@ -37,8 +40,9 @@ python -m playwright install chromium</pre>
           <input name="password" type="password" dir="ltr" placeholder="••••••••">
         </label>
       </div>
-      <label>پوشه‌ی خروجی <small>دیتابیس، عکس‌ها، فایل‌های HTML و اکسل همین‌جا ذخیره می‌شود</small>
-        <input name="out_dir" dir="ltr" value="{{ default_out }}">
+      <input type="hidden" name="out_root" value="{{ out_root }}">
+      <label>پوشه‌ی خروجی <small>پیش‌فرض: یک پوشه‌ی جدید جدا برای همین خزش داخل مسیر زیر — هر خزش مستقل از بقیه ذخیره می‌شود. مسیر کاملِ پوشه‌ی دلخواه بدهید تا خروجی همان‌جا برود.</small>
+        <input name="out_dir" dir="ltr" value="{{ out_root }}">
       </label>
 
       <details class="adv">
@@ -80,7 +84,9 @@ python -m playwright install chromium</pre>
         <button class="btn solid lg" type="submit" id="btnStart">{{ icon('rocket') }} شروع خزش</button>
         <span id="startMsg" class="muted"></span>
       </div>
-      <p class="hint">💡 اگر سامانه کد پیامکی (OTP) بخواهد، پیامش را در لاگ پایین می‌بینید؛
+      <p class="hint">💡 هر خزش در پوشه‌ی خودش ذخیره و در «خزش‌های من» ثبت می‌شود؛ بعداً از بالای هر صفحه
+      یا از صفحه‌ی «خزش‌های من» می‌توانید بین خزش‌ها جابه‌جا شوید.
+      اگر سامانه کد پیامکی (OTP) بخواهد، پیامش را در لاگ پایین می‌بینید؛
       کد را در همان پنجره‌ی مرورگر وارد و تأیید کنید — برنامه خودش ادامه می‌دهد.</p>
     </form>
   </div>

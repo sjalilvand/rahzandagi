@@ -40,9 +40,10 @@ from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
                    request, send_file, send_from_directory, url_for)
 
 APP_NAME = "سایت‌کاو | وب‌اپ یکپارچه"
-VERSION = "۴.۰"
+VERSION = "۴.۱"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(APP_DIR, "viewer_settings.json")
+RUNS_FILE = os.path.join(APP_DIR, "crawl_runs.json")
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp", ".ico"}
 PAGE_SIZE = 100
@@ -88,6 +89,17 @@ def find_db(cli_db=None):
         os.path.join(APP_DIR, "output", "site_data.db"),
         os.path.join(os.path.expanduser("~"), "Desktop", "خروجی", "site_data.db"),
     ]
+    # پوشه‌های جداگانه‌ی هر خزش: خروجی/<نام>/site_data.db — تازه‌ترین اول
+    for base in (os.path.join(APP_DIR, "خروجی"),
+                 os.path.join(os.path.expanduser("~"), "Desktop", "خروجی")):
+        try:
+            if os.path.isdir(base):
+                for sub in sorted(os.listdir(base), reverse=True):
+                    dbf = os.path.join(base, sub, "site_data.db")
+                    if os.path.isfile(dbf):
+                        cands.append(dbf)
+        except Exception:
+            pass
     for c in cands:
         try:
             if c and os.path.isfile(c):
@@ -107,6 +119,156 @@ def db_size_str(path):
     except Exception:
         return "—"
     return "—"
+
+
+# ------------------------------------------------------- فهرست خزش‌ها (هر خزش جدا)
+_RUNS_CACHE = {"mt": None, "scan_at": 0.0, "runs": None}
+
+
+def _run_id(out_dir):
+    import hashlib
+    return hashlib.sha1(os.path.abspath(out_dir).lower().encode("utf-8")).hexdigest()[:10]
+
+
+def _scan_out_roots():
+    """پوشه‌های خروجی که site_data.db دارند — برای کشف خودکار خزش‌های قدیمی"""
+    bases = [os.path.join(APP_DIR, "خروجی"),
+             os.path.join(os.path.expanduser("~"), "Desktop", "خروجی")]
+    found = []
+    for base in bases:
+        try:
+            if not os.path.isdir(base):
+                continue
+            for sub in sorted(os.listdir(base)):
+                d = os.path.abspath(os.path.join(base, sub))
+                if not os.path.isdir(d):
+                    continue
+                dbf = os.path.join(d, "site_data.db")
+                if os.path.isfile(dbf):
+                    found.append({"id": _run_id(d), "name": sub, "url": "",
+                                  "out_dir": d, "db_path": dbf,
+                                  "created_at": datetime.fromtimestamp(
+                                      os.path.getmtime(dbf)).isoformat(timespec="seconds"),
+                                  "auto": True})
+        except Exception:
+            pass
+    return found
+
+
+def load_runs(force=False):
+    """فهرست خزش‌های ثبت‌شده + کشف خودکار؛ نتیجه کوتاه‌مدت کش می‌شود"""
+    global _RUNS_CACHE
+    try:
+        mt = os.path.getmtime(RUNS_FILE) if os.path.isfile(RUNS_FILE) else -1
+    except Exception:
+        mt = -1
+    now = time.time()
+    c = _RUNS_CACHE
+    if (not force and c["runs"] is not None and c["mt"] == mt
+            and now - c["scan_at"] < 8):
+        return c["runs"]
+    runs = []
+    if mt >= 0:
+        try:
+            with open(RUNS_FILE, "r", encoding="utf-8") as f:
+                runs = [r for r in (json.load(f) or {}).get("runs", [])
+                        if isinstance(r, dict) and r.get("out_dir")]
+        except Exception:
+            runs = []
+    known = set()
+    for r in runs:
+        try:
+            known.add(os.path.abspath(r["out_dir"]).lower())
+        except Exception:
+            pass
+    for r in _scan_out_roots():
+        try:
+            if r["out_dir"].lower() not in known:
+                runs.append(r)
+                known.add(r["out_dir"].lower())
+        except Exception:
+            pass
+    _RUNS_CACHE = {"mt": mt, "scan_at": now, "runs": runs}
+    return runs
+
+
+def save_runs(runs):
+    global _RUNS_CACHE
+    try:
+        with open(RUNS_FILE, "w", encoding="utf-8") as f:
+            json.dump({"runs": runs}, f, ensure_ascii=False, indent=2)
+        _RUNS_CACHE = {"mt": os.path.getmtime(RUNS_FILE),
+                       "scan_at": time.time(), "runs": runs}
+    except Exception:
+        pass
+
+
+def register_run(name, url, out_dir, db_path=None):
+    """ثبت/به‌روزرسانی یک خزش در فهرست (بر اساس پوشه‌ی خروجی یکتاست)"""
+    out_dir = os.path.abspath(out_dir)
+    db_path = os.path.abspath(db_path) if db_path else os.path.join(out_dir, "site_data.db")
+    rid = _run_id(out_dir)
+    runs = [r for r in load_runs(force=True)
+            if os.path.abspath(r.get("out_dir") or "").lower() != out_dir.lower()]
+    entry = {"id": rid, "name": (name or "").strip() or os.path.basename(out_dir),
+             "url": url or "", "out_dir": out_dir, "db_path": db_path,
+             "created_at": datetime.now().isoformat(timespec="seconds")}
+    runs.insert(0, entry)
+    save_runs(runs)
+    return entry
+
+
+def run_stats(r):
+    """آمار کوتاه هر خزش برای صفحه‌ی «خزش‌های من»"""
+    st = {"size": "—", "pages": None, "db_ok": False}
+    db = r.get("db_path")
+    try:
+        if db and os.path.isfile(db):
+            st["db_ok"] = True
+            st["size"] = db_size_str(db)
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+            try:
+                st["pages"] = con.execute("SELECT COUNT(*) FROM pages").fetchone()[0]
+            finally:
+                con.close()
+    except Exception:
+        pass
+    return st
+
+
+def runs_quick():
+    """برای گزینشگر بالای همه‌ی صفحه‌ها — فقط نام‌ها (سبک و سریع)"""
+    try:
+        cur = os.path.abspath(DB_PATH) if DB_PATH else None
+    except Exception:
+        cur = None
+    out = []
+    for r in load_runs():
+        try:
+            cur_flag = bool(cur and r.get("db_path")
+                            and os.path.abspath(r["db_path"]) == cur)
+        except Exception:
+            cur_flag = False
+        out.append({"id": r["id"],
+                    "name": r.get("name") or os.path.basename(r.get("out_dir") or ""),
+                    "cur": cur_flag})
+    return out
+
+
+def current_run_name():
+    if not DB_PATH:
+        return None
+    try:
+        cur = os.path.abspath(DB_PATH)
+    except Exception:
+        return None
+    for r in load_runs():
+        try:
+            if r.get("db_path") and os.path.abspath(r["db_path"]) == cur:
+                return r.get("name")
+        except Exception:
+            continue
+    return os.path.basename(os.path.dirname(cur))
 
 
 # ------------------------------------------------------------------ دیتابیس
@@ -397,6 +559,7 @@ def rebuild_full_export():
 def ctx():
     return dict(APP_NAME=APP_NAME, VERSION=VERSION, DB_PATH=DB_PATH,
                 OUT_DIR=OUT_DIR, DB_SIZE=db_size_str(DB_PATH) if DB_PATH else "—",
+                RUN_NAME=current_run_name(), runs_quick=runs_quick,
                 cur_page=lambda: request.endpoint or "")
 
 
@@ -463,7 +626,13 @@ def settings():
             save_settings({"db_path": DB_PATH, "out_dir": os.path.abspath(nout) if nout else ""})
             if nout and os.path.isdir(nout):
                 OUT_DIR = os.path.abspath(nout)
-            flash("تنظیمات ذخیره شد. ✅", "ok")
+            _gallery_cache["key"] = None
+            try:
+                register_run(os.path.basename(os.path.dirname(DB_PATH)), "",
+                             os.path.dirname(DB_PATH), DB_PATH)
+            except Exception:
+                pass
+            flash("تنظیمات ذخیره شد. ✅ این خروجی به فهرست «خزش‌های من» هم اضافه شد.", "ok")
             return redirect(url_for("dashboard"))
         flash("فایل دیتابیس پیدا نشد — مسیر را بررسی کنید.", "err")
     return render_template("settings.html")
@@ -916,7 +1085,7 @@ def _crawl_worker(cfg, out_dir, opts):
             CRAWL["result"] = {k: res.get(k) for k in
                                ("ok", "error", "hint", "pages", "tables",
                                 "rows", "texts", "links")}
-        # نمایشگر خودکار روی خروجی تازه تنظیم می‌شود
+        # نمایشگر خودکار روی خروجی تازه تنظیم می‌شود + در فهرست «خزش‌های من» ثبت می‌شود
         try:
             ndb = res.get("db_path") or os.path.join(out_dir, "site_data.db")
             if os.path.isfile(ndb):
@@ -924,7 +1093,9 @@ def _crawl_worker(cfg, out_dir, opts):
                 OUT_DIR = os.path.abspath(out_dir)
                 save_settings({"db_path": DB_PATH, "out_dir": OUT_DIR})
                 _gallery_cache["key"] = None
+                register_run(opts.get("name"), opts.get("url") or "", out_dir, ndb)
                 _clog("ok", "نمایشگر به خروجی تازه متصل شد — داشبورد را باز کنید.")
+                _clog("ok", f"این خزش با نام «{opts.get('name')}» در «خزش‌های من» ثبت شد؛ هر وقت بخواهید از بالای صفحه همان را انتخاب کنید.")
         except Exception:
             pass
 
@@ -937,10 +1108,11 @@ def _form_bool(v, default=False):
 
 @app.route("/crawl")
 def crawl_page():
-    default_out = OUT_DIR or load_settings().get("out_dir") or os.path.join(APP_DIR, "خروجی")
+    out_root = load_settings().get("out_root") or os.path.join(APP_DIR, "خروجی")
     return render_template("crawl.html", snap=_crawl_snapshot(),
                            crawler_ok=(_crawler is not None), crawler_err=_CRAWLER_ERR,
-                           default_out=default_out)
+                           out_root=out_root,
+                           suggested_name="خزش " + datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
 @app.route("/api/crawl/status")
@@ -961,7 +1133,16 @@ def crawl_start():
         return jsonify({"ok": False, "msg": "آدرس سامانه را وارد کنید."}), 400
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
-    out_dir = (data.get("out_dir") or "").strip().strip('"') or os.path.join(APP_DIR, "خروجی")
+    # نام و پوشه‌ی مستقل این خزش — هر خزش در پوشه‌ی خودش ذخیره می‌شود
+    run_name = (data.get("run_name") or "").strip() or \
+        "خزش " + datetime.now().strftime("%Y-%m-%d %H:%M")
+    out_root = (data.get("out_root") or "").strip().strip('"') or os.path.join(APP_DIR, "خروجی")
+    out_dir = (data.get("out_dir") or "").strip().strip('"')
+    if not out_dir or os.path.abspath(out_dir) == os.path.abspath(out_root):
+        # کاربر پوشه‌ی جدا مشخص نکرده → زیرپوشه‌ی جدید با نامِ همین خزش
+        slug = re.sub(r"[\\/:*?\"<>|]+", " ", run_name)
+        slug = re.sub(r"\s+", "-", slug.strip())[:60] or "crawl"
+        out_dir = os.path.join(out_root, f"{slug} - {datetime.now().strftime('%Y%m%d-%H%M')}")
     try:
         os.makedirs(out_dir, exist_ok=True)
     except Exception as e:
@@ -1024,13 +1205,16 @@ def crawl_start():
                      ended_at=None, result=None, stop_req=False, skip_req=False,
                      out_dir=os.path.abspath(out_dir))
         CRAWL["log"].clear()
-    _clog("info", f"خزش «{url}» ثبت شد — پوشه خروجی: {out_dir}")
+    _clog("info", f"خزش «{run_name}» ثبت شد — آدرس: {url}")
+    _clog("info", f"پوشه‌ی مستقل این خزش: {out_dir}")
     if headed:
         _clog("info", "پنجره‌ی مرورگر باز می‌شود؛ اگر سامانه ورود/کد پیامکی خواست، در همان پنجره انجام دهید.")
     threading.Thread(target=_crawl_worker,
-                     args=(cfg, out_dir, {"fresh": fresh, "headed": headed, "manual": manual}),
+                     args=(cfg, out_dir, {"fresh": fresh, "headed": headed, "manual": manual,
+                                          "name": run_name, "url": url}),
                      daemon=True).start()
-    return jsonify({"ok": True, "msg": "خزش آغاز شد — پیشرفت در همین صفحه نمایش داده می‌شود."})
+    return jsonify({"ok": True, "msg": "خزش آغاز شد — پیشرفت در همین صفحه نمایش داده می‌شود.",
+                    "run_name": run_name, "out_dir": os.path.abspath(out_dir)})
 
 
 @app.route("/api/crawl/stop", methods=["POST"])
@@ -1056,6 +1240,100 @@ def crawl_skip():
         CRAWL["skip_req"] = True
     _clog("warn", "درخواست «رد کردن صفحه‌ی فعلی» ثبت شد.")
     return jsonify({"ok": True, "msg": "صفحه‌ی فعلی رد می‌شود."})
+
+
+# ------------------------------------------------------------------ خزش‌های من
+def _sort_runs(items):
+    """فعلی اول، بعد تازه‌ترین"""
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    items.sort(key=lambda x: 0 if x.get("is_current") else 1)
+    return items
+
+
+@app.route("/runs")
+def runs_page():
+    items = []
+    for r in load_runs(force=True):
+        it = dict(r)
+        it.update(run_stats(r))
+        try:
+            it["is_current"] = bool(DB_PATH and it.get("db_path") and
+                                    os.path.abspath(it["db_path"]) == os.path.abspath(DB_PATH))
+        except Exception:
+            it["is_current"] = False
+        items.append(it)
+    return render_template("runs.html", runs=_sort_runs(items))
+
+
+def _select_run(r):
+    """سوییچ نمایشگر به یک خزش ثبت‌شده"""
+    global DB_PATH, OUT_DIR
+    db = r.get("db_path")
+    if not db or not os.path.isfile(db):
+        return False, "فایل دیتابیس این خزش پیدا نشد — شاید پوشه جابه‌جا یا حذف شده باشد."
+    DB_PATH = os.path.abspath(db)
+    outd = r.get("out_dir") or os.path.dirname(DB_PATH)
+    OUT_DIR = os.path.abspath(outd) if os.path.isdir(outd) else os.path.dirname(DB_PATH)
+    save_settings({"db_path": DB_PATH, "out_dir": OUT_DIR})
+    _gallery_cache["key"] = None
+    return True, r.get("name") or "خزش"
+
+
+@app.route("/runs/select", methods=["POST"])
+def runs_select():
+    rid = request.form.get("id") or (request.get_json(silent=True) or {}).get("id")
+    target = next((r for r in load_runs(force=True) if r["id"] == rid), None)
+    if not target:
+        flash("خزش مورد نظر در فهرست پیدا نشد.", "err")
+        return redirect(request.referrer or url_for("runs_page"))
+    ok, msg = _select_run(target)
+    if ok:
+        flash(f"خزش «{msg}» انتخاب شد — همه‌ی صفحات اکنون داده‌های همین خزش را نشان می‌دهند. ✅", "ok")
+        return redirect(url_for("dashboard"))
+    flash(msg, "err")
+    return redirect(url_for("runs_page"))
+
+
+@app.route("/runs/rename", methods=["POST"])
+def runs_rename():
+    rid = request.form.get("id", "")
+    name = (request.form.get("name") or "").strip()
+    if rid and name:
+        runs = load_runs(force=True)
+        for r in runs:
+            if r["id"] == rid:
+                r["name"] = name
+                r.pop("auto", None)
+                break
+        save_runs(runs)
+        flash("نام خزش عوض شد. ✅", "ok")
+    return redirect(url_for("runs_page"))
+
+
+@app.route("/runs/remove", methods=["POST"])
+def runs_remove():
+    rid = request.form.get("id", "")
+    runs = [r for r in load_runs(force=True) if r["id"] != rid]
+    save_runs(runs)
+    flash("از فهرست حذف شد — فایل‌ها و پوشه‌ها سر جایشان هستند.", "ok")
+    return redirect(url_for("runs_page"))
+
+
+@app.route("/runs/add", methods=["POST"])
+def runs_add():
+    p = (request.form.get("path") or "").strip().strip('"')
+    if not p:
+        flash("مسیر را وارد کنید.", "err")
+        return redirect(url_for("runs_page"))
+    p = os.path.abspath(os.path.expanduser(p))
+    db = p if os.path.isfile(p) else os.path.join(p, "site_data.db")
+    if not os.path.isfile(db):
+        flash("در این مسیر site_data.db پیدا نشد — پوشه‌ی خروجیِ همان خزش را بدهید.", "err")
+        return redirect(url_for("runs_page"))
+    outd = os.path.dirname(db)
+    entry = register_run(os.path.basename(outd) or "خزش دستی", "", outd, db)
+    flash(f"خروجی «{entry['name']}» به فهرست اضافه شد. ✅", "ok")
+    return redirect(url_for("runs_page"))
 
 
 # ------------------------------------------------------------------ خطاها
@@ -1086,6 +1364,15 @@ def main():
     if DB_PATH:
         out = args.out or load_settings().get("out_dir") or os.path.dirname(DB_PATH)
         OUT_DIR = os.path.abspath(out) if out and os.path.isdir(out) else os.path.dirname(DB_PATH)
+        # اگر این خروجی هنوز در فهرست «خزش‌های من» نیست، همین حالا ثبت شود
+        try:
+            _cur = os.path.abspath(DB_PATH).lower()
+            if not any((r.get("db_path") and os.path.abspath(r["db_path"]).lower() == _cur)
+                       for r in load_runs(force=True)):
+                register_run(os.path.basename(os.path.dirname(DB_PATH)), "",
+                             os.path.dirname(DB_PATH), DB_PATH)
+        except Exception:
+            pass
     elif args.out and os.path.isdir(args.out):
         OUT_DIR = os.path.abspath(args.out)
 

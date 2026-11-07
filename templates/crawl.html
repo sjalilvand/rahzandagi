@@ -77,7 +77,7 @@ python -m playwright install chromium</pre>
         <label class="chk"><input type="checkbox" name="manual" value="1">
           ورود دستی: خودم در پنجره‌ی مرورگر لاگین می‌کنم (برای کپچا)</label>
         <label class="chk"><input type="checkbox" name="headless" value="1">
-          مرورگر مخفی اجرا شود (پنجره‌ای باز نشود — برای ورود/کد پیامکی مناسب نیست)</label>
+          مرورگر مخفی اجرا شود (پنجره‌ای باز نشود — اگر سامانه کد امنیتی/کپچا یا کد پیامکی دارد، این تیک را نزنید)</label>
       </div>
 
       <div class="btnrow">
@@ -86,8 +86,9 @@ python -m playwright install chromium</pre>
       </div>
       <p class="hint">💡 هر خزش در پوشه‌ی خودش ذخیره و در «خزش‌های من» ثبت می‌شود؛ بعداً از بالای هر صفحه
       یا از صفحه‌ی «خزش‌های من» می‌توانید بین خزش‌ها جابه‌جا شوید.
-      اگر سامانه کد پیامکی (OTP) بخواهد، پیامش را در لاگ پایین می‌بینید؛
-      کد را در همان پنجره‌ی مرورگر وارد و تأیید کنید — برنامه خودش ادامه می‌دهد.</p>
+      اگر سامانه کد پیامکی (OTP) یا کد امنیتی (کپچا) بخواهد، پیامش را در لاگ پایین می‌بینید؛
+      نام کاربری و رمز را خودِ برنامه پر می‌کند و فقط کد/کپچا را در همان پنجره‌ی مرورگر تایپ کنید —
+      برنامه خودش ثبت را می‌زند و ادامه می‌دهد. نشست لاگین هم بین خزش‌های همان سایت نگه داشته می‌شود.</p>
     </form>
   </div>
 
@@ -220,6 +221,23 @@ python -m playwright install chromium</pre>
   $('btnSkip') && $('btnSkip').addEventListener('click', function () {
     fetch('/api/crawl/skip', { method: 'POST' });
   });
+
+  // اگر نام کاربری/رمز پر شود، مرورگر باید مرئی باشد (کپچا/کد پیامکی در پنجره تایپ می‌شود)
+  var userInp = document.querySelector('#crawlForm input[name=username]');
+  var passInp = document.querySelector('#crawlForm input[name=password]');
+  var headChk = document.querySelector('#crawlForm input[name=headless]');
+  function loginVisibility() {
+    if (!headChk) return;
+    var need = (userInp && userInp.value.trim()) || (passInp && passInp.value);
+    if (need && headChk.checked) {
+      headChk.checked = false;
+      headChk.dispatchEvent(new Event('change'));
+    }
+  }
+  if (userInp) userInp.addEventListener('input', loginVisibility);
+  if (passInp) passInp.addEventListener('input', loginVisibility);
+  if (userInp) userInp.addEventListener('change', loginVisibility);
+  if (passInp) passInp.addEventListener('change', loginVisibility);
 
   $('crawlForm').addEventListener('submit', function (e) {
     e.preventDefault();

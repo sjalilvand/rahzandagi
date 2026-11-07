@@ -112,6 +112,43 @@ HOOKS = UIHooks()
 # پاسخ ویژه‌ی قلاب ask_otp: کاربر خودش کد را در پنجره مرورگر وارد کرده/می‌کند
 OTP_IN_BROWSER = "__IN_BROWSER__"
 
+# ---------------------------------------------------------------- پنهان‌سازی مرورگر خودکار (استلث)
+# خیلی از سامانه‌ها (خصوصاً دولتی) مرورگر خودکار را با navigator.webdriver یا UA هدلس می‌شناسند
+# و نشست را وسط کار قطع می‌کنند («وارد و خارج می‌شود و دوام ندارد»). این اسکریپت نشانه‌ها را می‌پوشاند.
+STEALTH_JS = r"""
+() => {
+  try {
+    Object.defineProperty(Navigator.prototype, 'webdriver', {get: () => undefined, configurable: true});
+  } catch (e) {}
+  try { delete Object.getPrototypeOf(navigator).webdriver; } catch (e) {}
+  try { window.chrome = window.chrome || {runtime: {}, loadTimes: function(){}, csi: function(){}}; } catch (e) {}
+  try {
+    Object.defineProperty(navigator, 'languages', {get: () => ['fa-IR', 'fa', 'en-US', 'en'], configurable: true});
+    Object.defineProperty(navigator, 'plugins', {get: () => {
+      const arr = [{name: 'Chrome PDF Plugin'}, {name: 'Chrome PDF Viewer'}, {name: 'Native Client'}];
+      arr.item = i => arr[i]; arr.namedItem = n => arr.find(x => x.name === n); arr.refresh = function(){};
+      return arr;
+    }, configurable: true});
+  } catch (e) {}
+  try {
+    if (window.navigator.permissions && window.navigator.permissions.query) {
+      const orig = window.navigator.permissions.query.bind(window.navigator.permissions);
+      window.navigator.permissions.query = (p) => (p && p.name === 'notifications')
+        ? Promise.resolve({state: Notification.permission}) : orig(p);
+    }
+  } catch (e) {}
+  try {
+    const getParams = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+    if (getParams) Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+      get: function() { return getParams.get.call(this); }, configurable: true});
+  } catch (e) {}
+}
+"""
+
+# UA واقعی کروم ویندوزی — نسخه‌اش در زمان اجرا با نسخه‌ی کرومیوم نصب‌شده هماهنگ می‌شود
+UA_WINDOWS_TMPL = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/{ver} Safari/537.36")
+
 # ---------------------------------------------------------------- ثابت‌ها
 NON_HTML_EXT = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp", ".tif", ".tiff",
@@ -193,9 +230,11 @@ JS_DETECT_LOGIN = r"""
   const cands = [...form.querySelectorAll('input')].filter(el =>
       !badT.includes((el.type || 'text').toLowerCase()) && !el.disabled && !el.readOnly && vis(el));
   let user = cands.find(el => el.getBoundingClientRect().top <= pw.getBoundingClientRect().top + 2) || cands[0] || null;
-  const prefer = cands.find(c =>
-      /user|email|login|mobile|username|account|نام|کاربر|ایمیل|موبایل|کد|شناسه|حساب/i
-        .test((c.name || '') + (c.id || '') + (c.placeholder || '')));
+  // نسخه ۴.۱: فیلد کد امنیتی/کپچا نباید به‌عنوان «نام کاربری» علامت بخورد
+  const metaOf = c => ((c.name || '') + ' ' + (c.id || '') + ' ' + (c.placeholder || '') + ' ' + (c.getAttribute('aria-label') || ''));
+  const isCap = c => /کپچا|captcha|کد\s*امنیتی|کد\s*امنیت|کد\s*تصویر|security\s*code|تصویر\s*امنیتی/i.test(metaOf(c));
+  const USER_RE = /user|email|login|mobile|username|account|نام|کاربر|ایمیل|موبایل|کد|شناسه|حساب/i;
+  const prefer = cands.find(c => !isCap(c) && USER_RE.test(metaOf(c))) || cands.find(c => !isCap(c));
   if (prefer) user = prefer;
   const btns = [...form.querySelectorAll('button, input[type=submit], [role=button]')].filter(vis);
   let submit = btns.find(b => (b.getAttribute('type') || '').toLowerCase() === 'submit')
@@ -423,6 +462,50 @@ JS_OTP_FILL = r"""
   if (boxes.length >= code.length) boxes.slice(0, code.length).forEach((el, i) => setv(el, code[i]));
   else if (boxes.length) setv(boxes[0], code);
   return boxes.length;
+}
+"""
+
+# یافتن و علامت‌گذاری فیلد کد امنیتی/کپچا در فرم ورود (نسخه ۴.۱)
+# کد امنیتی = فیلدی که نامش کپچا/کد امنیتی است یا بلافاصله کنار تصویر کپچا قرار دارد
+JS_CAPTCHA_MARK = r"""
+() => {
+  const vis = el => el && el.getClientRects().length > 0 && !el.disabled && !el.readOnly;
+  const badT = ['hidden','checkbox','radio','file','submit','button','image','reset'];
+  const NEG = /پستی|postal|zip|ملی|national|تلفن|phone|mobile|موبایل|پیگیری|tracking|سریال|serial|ایمیل|email/i;
+  const POS = /کپچا|captcha|کد\s*امنیتی|کد\s*امنیت|کد\s*تصویر|کد\s*نگهبان|تصویر\s*امنیتی|security\s*code|secure\s*code|cap\s*code/i;
+  const metaOf = el => ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.placeholder || '') + ' '
+                        + (el.getAttribute('aria-label') || '') + ' ' + (el.className || '')).toLowerCase();
+  const free = el => vis(el) && !badT.includes((el.type || 'text').toLowerCase())
+                     && !el.hasAttribute('data-cw-user') && !el.hasAttribute('data-cw-pass');
+  let el = [...document.querySelectorAll('input')].find(x => free(x) && POS.test(metaOf(x)) && !NEG.test(metaOf(x))) || null;
+  if (!el) {
+    // فیلد کنار تصویر کپچا (حتی اگر نامش کپچا نباشد)
+    const imgs = [...document.querySelectorAll('img')].filter(vis).filter(i =>
+      /captcha|کپچا|کد\s*امنیتی|کد\s*تصویر|security|verify|نگهبان/i.test(((i.src || '') + ' ' + (i.className || '') + ' ' + (i.id || '')).toLowerCase()));
+    for (const img of imgs.slice(0, 4)) {
+      const box = img.closest('div, li, td, p, fieldset, form') || img.parentElement;
+      const scope = (box && box.parentElement) || document;
+      const ins = [...scope.querySelectorAll('input')].filter(x => free(x) && !NEG.test(metaOf(x)));
+      if (ins.length) { el = ins[0]; break; }
+    }
+  }
+  if (!el) return {found: false};
+  el.setAttribute('data-cw-captcha', '1');
+  return {found: true, name: el.name || el.id || '', maxlen: el.getAttribute('maxlength') || ''};
+}
+"""
+
+# وضعیت لحظه‌ای فیلد کد امنیتی — برای انتظارِ تایپِ کد توسط کاربر در پنجره مرورگر
+JS_CAPTCHA_STATE = r"""
+() => {
+  const vis = el => el && el.getClientRects().length > 0;
+  const pws = [...document.querySelectorAll('input[type=password]')].filter(vis);
+  const cap = document.querySelector('[data-cw-captcha]');
+  return {
+    hasPw: pws.length > 0,
+    hasCaptcha: !!(cap && vis(cap)),
+    val: cap ? (cap.value || '') : ''
+  };
 }
 """
 
@@ -728,6 +811,8 @@ class State:
         self.host = ""
         self.start_urls = []
         self.abort_reason = None
+        self._last_login_ok = 0.0   # زمان آخرین ورود موفق — برای جلوگیری از حلقه ورود/خروج
+        self.sess_global = None     # مسیر سشن مشترکِ همان دامنه (بین خزش‌ها)
 
     def matches_only(self, nu):
         """آیا این URL طبق «فقط این صفحات» کاربر مجاز است؟ (بدون الگو = همه)"""
@@ -893,6 +978,15 @@ def _save_session(ctx, st):
         sess = os.path.join(st.base_dir, st.cfg.get("output", {}).get("session_file", "session.json"))
         ctx.storage_state(path=sess)
         ok(f"سشن ذخیره شد: {sess}")
+        # نسخه‌ی مشترکِ همان دامنه — خزش‌های بعدی بدون لاگین مجدد شروع می‌کنند (نسخه ۴.۱)
+        g = getattr(st, "sess_global", None)
+        if g:
+            try:
+                os.makedirs(os.path.dirname(g), exist_ok=True)
+                ctx.storage_state(path=g)
+                info("سشن مشترک هم ذخیره شد — خزش بعدیِ همین سامانه بدون لاگین ادامه می‌دهد.")
+            except Exception:
+                pass
     except Exception as e:
         warn(f"ذخیره سشن ناموفق بود: {short(e)}")
 
@@ -902,22 +996,47 @@ def _detect_on(page):
     except Exception:
         return {}
 
-def _submit_login_form(page, det, user, passw, site):
-    """پر کردن و ارسال فرم ورود — هم حالت رمز و هم حالت موبایل‌محور"""
+def _captcha_on(page):
+    """یافتن و علامت‌گذاری فیلد کد امنیتی/کپچا — خروجی: {found, name} یا {found: False}"""
+    try:
+        return page.evaluate(JS_CAPTCHA_MARK) or {}
+    except Exception:
+        return {}
+
+def _captcha_state(page):
+    try:
+        return page.evaluate(JS_CAPTCHA_STATE) or {}
+    except Exception:
+        return {}
+
+def _just_logged_in(st, secs=150):
+    """آیا همین تازگی وارد شده‌ایم؟ — برای جلوگیری از حلقه‌ی لاگینِ بی‌پایان
+    بعضی سامانه‌ها بلافاصله بعد از ورود، اگر دوباره به صفحه ورود برویم، نشست را باطل می‌کنند؛
+    در این مهلت به‌جای لاگین مجدد، صفحه رد می‌شود."""
+    try:
+        return (time.time() - getattr(st, "_last_login_ok", 0.0)) < secs
+    except Exception:
+        return False
+
+def _submit_login_form(page, det, user, passw, site, click=True):
+    """پر کردن و ارسال فرم ورود — هم حالت رمز و هم حالت موبایل‌محور
+    click=False → فقط پر می‌کند و ثبت نمی‌زند (وقتی کاربر باید کد امنیتی را تایپ کند)"""
     us, ps, ss = site.get("username_selector"), site.get("password_selector"), site.get("submit_selector")
     try:
         if det.get("hasPassword"):
             if us and ps:
                 page.fill(us, user, timeout=8000)
                 page.fill(ps, passw, timeout=8000)
-                if ss:
+                if click and ss:
                     page.click(ss, timeout=8000)
-                else:
+                elif click:
                     page.press(ps, "Enter")
             else:
                 if det.get("userMarked"):
                     page.fill("[data-cw-user]", user, timeout=8000)
                 page.fill("[data-cw-pass]", passw, timeout=8000)
+                if not click:
+                    return True
                 if det.get("submitMarked"):
                     try:
                         page.click("[data-cw-submit]", timeout=6000)
@@ -931,6 +1050,8 @@ def _submit_login_form(page, det, user, passw, site):
                 page.fill(us, user, timeout=8000)
             else:
                 page.fill("[data-cw-user]", user, timeout=8000)
+            if not click:
+                return True
             if ss:
                 page.click(ss, timeout=8000)
             elif det.get("submitMarked"):
@@ -942,7 +1063,8 @@ def _submit_login_form(page, det, user, passw, site):
                 page.press("[data-cw-user]", "Enter")
         return True
     except Exception as e:
-        warn(f"خطا در پر کردن فرم ورود: {short(e)}")
+        if click:
+            warn(f"خطا در پر کردن فرم ورود: {short(e)}")
         return False
 
 def _wait_after_submit(page, site, wait_s):
@@ -987,6 +1109,64 @@ def _wait_after_submit(page, site, wait_s):
     except Exception:
         pass
     return "fail"
+
+def _captcha_assist(page, det, user, passw, site):
+    """پشتیبانی از کد امنیتی/کپچا (نسخه ۴.۱):
+    نام کاربری و رمز خودکار پر می‌شود، بعد برنامه منتظر می‌ماند تا کاربر کد امنیتی را
+    در همان پنجره‌ی مرورگر تایپ کند؛ سپس خودش دکمه ورود را می‌زند و ادامه می‌دهد.
+    اگر کاربر خودش ثبت را زده باشد هم تشخیص داده می‌شود.
+    خروجی: True = فرم ثبت شد/صفحه عوض شد | False = نشد (تلاش مجدد)"""
+    try:
+        # اول نام کاربری و رمز را پر می‌کنیم (بدون ثبت) تا کاربر فقط کد را بنویسد
+        _submit_login_form(page, det, user, passw, site, click=False)
+    except Exception as e:
+        warn(f"خطا در پر کردن فرم ورود: {short(e)}")
+    info("کد امنیتی (کپچا) تشخیص داده شد — لطفاً فقط کد امنیتی را در پنجره‌ی مرورگر تایپ کنید؛ ثبت را خودم می‌زنم (سقف ۳ دقیقه).")
+    t0 = time.time()
+    while time.time() - t0 < 180:
+        if _user_skip():
+            warn("با فرمان شما، ورود رد شد.")
+            return False
+        try:
+            if page.is_closed():
+                return False
+            s = _captcha_state(page)
+        except Exception:
+            return False
+        if not s:
+            return False
+        if not s.get("hasPw") and not s.get("hasCaptcha"):
+            return True   # صفحه عوض شد — کاربر خودش ثبت را زده بود
+        if s.get("hasCaptcha") and (s.get("val") or "").strip():
+            break         # کاربر کد را نوشت — الان ثبت می‌کنیم
+        time.sleep(0.7)
+    else:
+        warn("کد امنیتی تایپ نشد؛ دوباره تلاش می‌کنیم.")
+        return False
+    # ثبت فرم: اول کلیک دکمه، بعد Enter روی رمز/کپچا
+    try:
+        page.click("[data-cw-submit]", timeout=4000)
+    except Exception:
+        pressed = False
+        for sel in ("[data-cw-pass]", "[data-cw-captcha]", "[data-cw-user]"):
+            try:
+                page.press(sel, "Enter", timeout=2500)
+                pressed = True
+                break
+            except Exception:
+                continue
+        if not pressed:
+            try:
+                page.evaluate(JS_CLICK_OTP_SUBMIT)
+            except Exception:
+                pass
+    try:
+        page.wait_for_load_state("load", timeout=15000)
+    except Exception:
+        pass
+    time.sleep(1.2)
+    ok("کد امنیتی ثبت شد؛ در حال بررسی نتیجه...")
+    return True
 
 # کلیک جاوااسکریپتی روی دکمه ثبت کد — وقتی کلیک عادی روی SPA کار نمی‌کند
 JS_CLICK_OTP_SUBMIT = r"""
@@ -1210,15 +1390,27 @@ def do_auto_login(page, ctx, st):
             if not det.get("userMarked"):
                 warn("فرم لاگین ناپدید شد.")
                 return False
-            _submit_login_form(page, det, user, passw, site)
-            try:
-                page.wait_for_load_state("load", timeout=15000)
-            except Exception:
-                pass
-            time.sleep(1.2)
-            res = _wait_after_submit(page, site, otp_wait)
+            # --- کد امنیتی/کپچا (نسخه ۴.۱) ---
+            cap = _captcha_on(page)
+            if cap.get("found"):
+                if st.headless:
+                    err("این سامانه کد امنیتی (کپچا) دارد و در حالت مرورگر مخفی نمی‌توان وارد شد.")
+                    err("راه‌حل: در صفحه «خزش جدید» تیک «مرورگر مخفی» را بردارید؛ پنجره مرورگر باز می‌شود و فقط کد امنیتی را خودتان تایپ می‌کنید — بقیه کار با برنامه است.")
+                    return False
+                if not _captcha_assist(page, det, user, passw, site):
+                    continue
+                res = _wait_after_submit(page, site, otp_wait)
+            else:
+                _submit_login_form(page, det, user, passw, site)
+                try:
+                    page.wait_for_load_state("load", timeout=15000)
+                except Exception:
+                    pass
+                time.sleep(1.2)
+                res = _wait_after_submit(page, site, otp_wait)
         if res == "ok":
             ok("ورود با موفقیت انجام شد.")
+            st._last_login_ok = time.time()
             _save_session(ctx, st)
             return True
         if res == "otp":
@@ -1256,6 +1448,7 @@ def do_auto_login(page, ctx, st):
                     time.sleep(1.0)
                 if done:
                     ok("ورود با موفقیت کامل شد.")
+                    st._last_login_ok = time.time()
                     _save_session(ctx, st)
                     return True
                 warn("کد در مرورگر وارد نشد یا صفحه کد همچنان باز است.")
@@ -1267,6 +1460,7 @@ def do_auto_login(page, ctx, st):
                 res2 = _wait_after_submit(page, site, otp_wait)
                 if res2 == "ok":
                     ok("ورود دومعلی با موفقیت کامل شد.")
+                    st._last_login_ok = time.time()
                     _save_session(ctx, st)
                     return True
                 if res2 == "otp":
@@ -1280,7 +1474,7 @@ def do_auto_login(page, ctx, st):
                     goto(page, lu, st.timeout)
         except Exception:
             pass
-    err("ورود خودکار ناموفق بود. اگر کپچا یا تایید دومرحله‌ای دارد، از ورود دستی استفاده کنید.")
+    err("ورود خودکار ناموفق بود. اگر کد امنیتی/تایید دومرحله‌ای دارد: تیک «مرورگر مخفی» را بردارید تا پنجره باز شود و فقط کد را تایپ کنید، یا گزینه «ورود دستی» را بزنید.")
     return False
 
 def do_manual_login(page, ctx, st):
@@ -1300,6 +1494,7 @@ def do_manual_login(page, ctx, st):
                 return False
             if not is_login_page(page, st):
                 ok("ورود دستی تشخیص داده شد. سشن ذخیره می‌شود...")
+                st._last_login_ok = time.time()
                 _save_session(ctx, st)
                 return True
         except Exception:
@@ -1632,6 +1827,9 @@ def process_page(page, ctx, url, st):
         db_log(st.db, "SKIPPED", url)
         return urls_seen
     if is_login_page(page, st):
+        if _just_logged_in(st):
+            warn("بعد از ورود، باز هم صفحه لاگین نمایش داده شد؛ برای جلوگیری از حلقه‌ی ورود/خروج، این صفحه رد شد.")
+            return urls_seen
         info("نشست منقضی شده؛ در حال ورود مجدد...")
         if not do_login_flow(page, ctx, st):
             return urls_seen
@@ -1727,6 +1925,9 @@ def process_page(page, ctx, url, st):
                     time.sleep(st.scroll_wait)
                     n += 1
                     if is_login_page(page, st):
+                        if _just_logged_in(st):
+                            warn("بعد از ورود، صفحه لاگین دوباره باز شد؛ توقف اسکرول برای جلوگیری از حلقه ورود/خروج.")
+                            break
                         if not do_login_flow(page, ctx, st):
                             break
                     if is_block_page(page):
@@ -1785,6 +1986,9 @@ def process_page(page, ctx, url, st):
                 pass
             time.sleep(st.delay)
             if is_login_page(page, st):
+                if _just_logged_in(st):
+                    warn("بعد از ورود، صفحه لاگین دوباره باز شد؛ صفحه‌بندی قطع شد تا حلقه ورود/خروج نسازد.")
+                    break
                 if not do_login_flow(page, ctx, st):
                     break
             if is_block_page(page):
@@ -1849,6 +2053,8 @@ def process_page(page, ctx, url, st):
                     warn(f"دسترسی توسط فایروال مسدود شد؛ رد شد: {nurl}")
                     continue
                 if is_login_page(page, st):
+                    if _just_logged_in(st):
+                        continue
                     if not do_login_flow(page, ctx, st):
                         continue
                     r = goto(page, nurl, st.timeout)
@@ -1880,6 +2086,8 @@ def process_page(page, ctx, url, st):
                         warn("دسترسی توسط فایروال مسدود شد؛ پایان صفحه‌بندی.")
                         break
                     if is_login_page(page, st):
+                        if _just_logged_in(st):
+                            break
                         if not do_login_flow(page, ctx, st):
                             break
                         r = goto(page, nurl, st.timeout)
@@ -2334,7 +2542,6 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
             return summary
 
         sess_file = os.path.join(base_dir, cfg.get("output", {}).get("session_file", "session.json"))
-        use_session = os.path.exists(sess_file) and not login
         starts = list(cfg.get("site", {}).get("start_urls") or [])
         if start_url:
             starts.append(start_url)
@@ -2342,6 +2549,23 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
             summary.update({"ok": False, "error": "no_start_urls",
                             "hint": "آدرس سامانه (start_urls) وارد نشده است."})
             return summary
+
+        # سشن مشترکِ همان دامنه — لاگین در خزش‌های بعدی هم دوام می‌آورد (نسخه ۴.۱)
+        sess_global = None
+        try:
+            host0 = urlsplit(norm(starts[0])).netloc.lower()
+            if host0:
+                sess_global = os.path.join(os.path.dirname(base_dir), "sessions",
+                                           hashlib.sha1(host0.encode("utf-8")).hexdigest()[:16] + ".json")
+        except Exception:
+            sess_global = None
+
+        use_session = os.path.exists(sess_file) and not login
+        if not use_session and sess_global and os.path.exists(sess_global) and not login:
+            use_session = True
+            sess_file = sess_global
+            info("از نشست ذخیره‌شده‌ی قبلی همین سامانه استفاده می‌شود — اگر معتبر باشد، بدون لاگین ادامه می‌دهیم.")
+        st.sess_global = sess_global
 
         # توقف فیلتر بدون مرورگر مرئی ممکن نیست — خودکار قابل‌مشاهده می‌شود
         if st.pause_urls and HOOKS.filter_pause and st.headless:
@@ -2365,6 +2589,10 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
                 ctx = browser.contexts[0] if browser.contexts else browser.new_context()
                 page = ctx.pages[0] if ctx.pages else ctx.new_page()
                 install_dialog_guard(page)
+                try:
+                    ctx.add_init_script(STEALTH_JS)   # پنهان‌سازی در مرورگر واقعی کاربر هم بی‌ضرر است
+                except Exception:
+                    pass
             else:
                 launch_kwargs = {"headless": st.headless}
                 if bcfg.get("channel"):
@@ -2378,14 +2606,25 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
                                  "height": int(ex.get("viewport_height", 900))},
                     "locale": "fa-IR",
                 }
-                # UA واقعی کروم ویندوزی — مرورگر خودکار را در برابر فیلترهای UA شفاف‌تر می‌کند
+                # UA واقعی کروم ویندوزی — در حالت مخفی، UA پیش‌فرض «HeadlessChrome» است که
+                # فایروال‌ها با آن مرورگر خودکار را شناسایی و نشست را قطع می‌کنند (نسخه ۴.۱)
                 if bcfg.get("user_agent"):
                     ctx_kwargs["user_agent"] = bcfg["user_agent"]
+                elif st.headless:
+                    try:
+                        ctx_kwargs["user_agent"] = UA_WINDOWS_TMPL.format(ver=browser.version)
+                    except Exception:
+                        ctx_kwargs["user_agent"] = UA_WINDOWS_TMPL.format(ver="126.0.0.0")
                 if use_session:
                     ctx_kwargs["storage_state"] = sess_file
                 ctx = browser.new_context(**ctx_kwargs)
                 page = ctx.new_page()
                 install_dialog_guard(page)
+                # پنهان‌سازی نشانه‌های مرورگر خودکار — ضد بلاک/خروج اجباری نشست
+                try:
+                    ctx.add_init_script(STEALTH_JS)
+                except Exception:
+                    pass
                 # صفحات تازه‌ای که بعداً باز می‌شوند (target=_blank) هم محافظت شوند
                 try:
                     ctx.on("page", install_dialog_guard)
@@ -2414,16 +2653,26 @@ def run_crawl(cfg, base_dir, fresh=False, headed=False, manual=False, login=Fals
                     info("لاگین لازم است.")
                 if not do_login_flow(page, ctx, st):
                     summary.update({"ok": False, "error": "login_failed",
-                                    "hint": "ورود انجام نشد؛ یوزر/پسورد را بررسی کنید یا از ورود دستی استفاده کنید."})
+                                    "hint": "ورود انجام نشد؛ یوزر/پسورد را بررسی کنید. اگر سامانه کد امنیتی (کپچا) یا کد پیامکی دارد، تیک «مرورگر مخفی» را بردارید تا پنجره‌ی مرورگر باز شود و کد را خودتان تایپ کنید — بقیه‌اش با برنامه است."})
                     return summary
-                goto(page, first, st.timeout)
+                # نسخه ۴.۱ — نکته‌ی مهم دوام نشست: بعد از ورود اگر همین‌جا صفحه‌ی معتبر باز است،
+                # به آدرس شروع (که معمولاً خودِ صفحه ورود است) برنمی‌گردیم؛ رفتن مجدد به صفحه ورود
+                # در خیلی از سامانه‌ها نشست را باطل می‌کند (وارد و خارج می‌شود).
+                if not (is_valid_http(page.url) and not is_login_page(page, st)):
+                    goto(page, first, st.timeout)
                 if is_block_page(page):
                     err("شروع کار ممکن نشد: این صفحه توسط فایروال/فیلتر سازمانی مسدود شده است.")
                     print(BLOCK_SOLUTIONS)
                     summary.update({"ok": False, "error": "blocked", "hint": BLOCK_SOLUTIONS})
                     return summary
-                # اگر سامانه پس از ورود به صفحه دیگری منتقل شد (مثلا داشبورد)، آن هم خزیده شود
+                # اگر سامانه پس از ورود به صفحه دیگری منتقل شد (مثلا داشبورد)، از همین‌جا خزش را
+                # ادامه می‌دهیم و URL شروع را با صفحه‌ی فرود جایگزین می‌کنیم تا دیگر به صفحه‌ی
+                # ورود درخواست نزنیم (ضد خروج اجباری و ضد حلقه ورود/خروج)
                 if is_valid_http(page.url) and norm(page.url) != norm(first):
+                    try:
+                        st.cfg["site"]["start_urls"][0] = page.url
+                    except Exception:
+                        pass
                     st.extra_starts.append(page.url)
             elif use_session:
                 ok("سشن ذخیره‌شده معتبر است — بدون نیاز به لاگین ادامه می‌دهیم.")
